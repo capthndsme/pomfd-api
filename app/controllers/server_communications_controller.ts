@@ -6,31 +6,17 @@ import FileItem from '#models/file_item'
 
 export default class ServerCommunicationsController {
   async ping({ request, response }: HttpContext) {
-    const { serverId } = request.qs()
+    const serverId = Number(request.header('x-server-id'))
     if (!serverId) throw new NamedError('invalid argument', 'einval')
-    await ServerCommunicationService.ping(serverId);
-    return response.ok(
-      createSuccess(
-        null,
-        "Ping ok",
-        "success"
-      )
-    )
+    await ServerCommunicationService.ping(serverId)
+    return response.ok(createSuccess(null, 'Ping ok', 'success'))
   }
 
   async uploadAck({ request, response }: HttpContext) {
- 
-    const body = request.body() as FileItem 
-        const serverId = Number(request.header('x-server-id'))
+    const body = request.body() as FileItem
+    const serverId = Number(request.header('x-server-id'))
     if (isNaN(serverId) || !serverId) throw new NamedError('invalid argument', 'einval')
-    const data = await ServerCommunicationService.uploadAck(serverId, body);
-    return response.ok(
-      createSuccess(
-        data,
-        "Upload acknowledged",
-        "success"
-      )
-    )
+    const data = await ServerCommunicationService.uploadAck(serverId, body)
+    return response.ok(createSuccess(data, 'Upload acknowledged', 'success'))
   }
-
 }

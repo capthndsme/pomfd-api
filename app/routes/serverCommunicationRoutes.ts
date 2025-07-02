@@ -9,6 +9,7 @@ function serverCommunicationRoutes(
   /** Upload acknowledgement */
   router.group(() => {
   router.post('/ack', [ServerCommunicationsController, 'uploadAck'])
+  router.get('/ping', [ServerCommunicationsController, 'ping'])
   })
   .prefix('/coordinator/v1')
   .use(middleware.serverAuth())

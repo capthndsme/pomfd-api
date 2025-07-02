@@ -14,6 +14,7 @@ class ServerCommunicationService {
 
     server.isUp = true;
     server.lastHeartbeat = DateTime.now()
+    console.log(`received ping from ${server.domain}`)
     await server.save();
   }
 
