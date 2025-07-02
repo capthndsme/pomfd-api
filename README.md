@@ -12,9 +12,20 @@ The capthndsme cloud storage/pomf hybrid
 1. Deploy the API 
 2. Deploy the StorageServers
 
-## Running the application
+## StorageServers deployment
+Coming soon, will make an `ace` command for deployments.
+
+## Developing the application
 1. Configure your .env file
 2. run `yarn` to install packages
 3. Run migrations - `node ace migration:run`
 
-Built with AdonisJS v6
+## Deployment
+1. Build the application - `node ace build --production`
+2. Copy .env to the `/build/` directory.
+3. Deploy it wherever. Start the app with `node bin/server.js`
+
+
+## Built with 
+- [AdonisJS](https://adonisjs.com/)
+- [Lucid](https://lucid.adonisjs.com/docs/introduction)
