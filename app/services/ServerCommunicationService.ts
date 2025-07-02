@@ -32,6 +32,7 @@ class ServerCommunicationService {
     dentry.serverShardId = serverId;
     await dentry.save();
     
+    return dentry;
 
     
   }

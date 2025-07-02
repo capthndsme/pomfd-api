@@ -10,6 +10,7 @@
 import router from '@adonisjs/core/services/router'
 import { authRoutes } from '../app/routes/authRoutes.js'
 import { uploaderRoutes } from '../app/routes/uploaderRoutes.js';
+import { serverCommunicationRoutes } from '../app/routes/serverCommunicationRoutes.js';
 
 router.get('/', async () => {
   return {
@@ -18,4 +19,5 @@ router.get('/', async () => {
 })
 
 authRoutes(router);
-uploaderRoutes(router)
+uploaderRoutes(router);
+serverCommunicationRoutes(router)

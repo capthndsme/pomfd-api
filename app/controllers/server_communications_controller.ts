@@ -6,7 +6,7 @@ import FileItem from '#models/file_item'
 
 export default class ServerCommunicationsController {
   async ping({ request, response }: HttpContext) {
-    const { serverId } = request.params()
+    const { serverId } = request.qs()
     if (!serverId) throw new NamedError('invalid argument', 'einval')
     await ServerCommunicationService.ping(serverId);
     return response.ok(
@@ -19,13 +19,14 @@ export default class ServerCommunicationsController {
   }
 
   async uploadAck({ request, response }: HttpContext) {
-    const { serverId } = request.params()
-    const file = request.body() as FileItem
-    if (!serverId) throw new NamedError('invalid argument', 'einval')
-    await ServerCommunicationService.uploadAck(serverId, file);
+ 
+    const body = request.body() as FileItem 
+        const serverId = Number(request.header('x-server-id'))
+    if (isNaN(serverId) || !serverId) throw new NamedError('invalid argument', 'einval')
+    const data = await ServerCommunicationService.uploadAck(serverId, body);
     return response.ok(
       createSuccess(
-        null,
+        data,
         "Upload acknowledged",
         "success"
       )
