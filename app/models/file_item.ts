@@ -1,14 +1,13 @@
 import { DateTime } from 'luxon'
-import { BaseModel, belongsTo, column } from '@adonisjs/lucid/orm'
+import { BaseModel, belongsTo, column, hasMany } from '@adonisjs/lucid/orm'
 import { type FileType } from '../../shared/types/FileType.js'
-import { type BelongsTo } from '@adonisjs/lucid/types/relations'
+import { type BelongsTo, type HasMany } from '@adonisjs/lucid/types/relations'
 import User from './user.js'
 import ServerShard from './server_shard.js'
-import Folder from './folder.js'
 
 export default class FileItem extends BaseModel {
   @column({ isPrimary: true })
-  declare id: number
+  declare id: string
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -17,26 +16,34 @@ export default class FileItem extends BaseModel {
   declare updatedAt: DateTime
 
   @column()
-  declare originalFileName: string
+  declare ownerId: string
 
   @column()
-  /**
-   * File-determined file-type
-   */
-  declare mimeType: string
+  declare parentFolder: string | null
 
   @column()
-  /**
-   * Server-determined file-type
-   */
-  declare fileType: FileType
+  declare name: string
 
   @column()
-  /**
-   * AWS S3-esque "file keys"
-   * which are just ${RANDOM_HASH(32)}/${original}.${ext}
-   */
-  declare fileKey: string
+  declare description: string | null
+
+  @column()
+  declare isPrivate: boolean | null
+
+  @column()
+  declare isFolder: boolean
+
+  @column()
+  declare originalFileName: string | null
+
+  @column()
+  declare mimeType: string | null
+
+  @column()
+  declare fileType: FileType | null
+
+  @column()
+  declare fileKey: string | null
 
   @column()
   declare previewKey: string | null
@@ -44,23 +51,11 @@ export default class FileItem extends BaseModel {
   @column()
   declare previewBlurHash: string | null
 
-  /** Sharding and Ownership */
+  @column()
+  declare serverShardId: number | null
 
   @column()
-  declare ownerId: string | null
-
-  @column()
-  declare serverShardId: number
-
-  @column()
-  declare isPrivate: boolean | null
-
-  @column()
-  declare fileSize: number 
-
-  /** Filesystem */
-  @column()
-  declare parentFolder: string | null
+  declare fileSize: number | null
 
   /** Relations */
   @belongsTo(() => User, {
@@ -75,9 +70,15 @@ export default class FileItem extends BaseModel {
   })
   declare serverShard: BelongsTo<typeof ServerShard>
 
-  @belongsTo(() => Folder, {
+  @belongsTo(() => FileItem, {
     foreignKey: 'parentFolder',
-    localKey: 'folderUuid',
+    localKey: 'id',
   })
-  declare parent: BelongsTo<typeof Folder>
+  declare parent: BelongsTo<typeof FileItem>
+
+  @hasMany(() => FileItem, {
+    foreignKey: 'parentFolder',
+    localKey: 'id',
+  })
+  declare children: HasMany<typeof FileItem>
 }
