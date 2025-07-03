@@ -13,11 +13,6 @@ export default class extends BaseSchema {
         .inTable('file_items')
         .onDelete('SET NULL')
 
-      // indices
-      table.index(['owner_id'], 'owner_id_index')
-      table.index(['parent_folder'], 'parent_folder_index')
-      table.index(['replication_parent'], 'replication_parent_index')
-      table.index(['server_shard_id'], 'server_shard_id_index')
 
       // composite indices
       // Primary access patterns
@@ -33,6 +28,10 @@ export default class extends BaseSchema {
 
       // Replication indices
       table.index(['replication_parent', 'server_shard_id'], 'replica_location_index')
+      
+      // NOTE: The index below is on the same columns as 'replica_location_index', just in reverse order.
+      // This creates write overhead. Ensure your query patterns justify needing both indexes before deploying to production.
+      // It is often the case that a single composite index is sufficient.
       table.index(['server_shard_id', 'replication_parent'], 'shard_replication_index')
 
       // File operations
@@ -41,7 +40,6 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    
     this.schema.alterTable(this.tableName, (table) => {
       table.dropForeign('replication_parent')
       table.dropColumn('replication_parent')
@@ -60,6 +58,5 @@ export default class extends BaseSchema {
 
       table.dropIndex(['parent_folder', 'name'], 'folder_name_index')
     })
-    
   }
 }
