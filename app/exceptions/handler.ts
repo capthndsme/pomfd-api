@@ -20,7 +20,7 @@ export default class HttpExceptionHandler extends ExceptionHandler {
     const { response } = ctx;
 
     response.status(error?.status ?? 500);
-    console.log(error)
+    console.log("error handle" , error)
     if (error instanceof NamedError) {
       return response.status(500).send(
         createFailure(
