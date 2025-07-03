@@ -1,7 +1,15 @@
+import { inject } from '@adonisjs/core'
 import { NamedError } from '#exceptions/NamedError'
 import ServerShard from '#models/server_shard'
+import Inode from '#models/inode'
+import FileItem from '#models/file_item'
+import { randomUUID } from 'crypto'
+ 
 
-class UploadCoordinatorService {
+@inject()
+export default class UploadCoordinatorService {
+  constructor() {}
+
   async findAvailableServers() {
     return await ServerShard.query().where('is_up', true).orderBy('updated_at', 'asc').limit(5)
   }
@@ -17,35 +25,32 @@ class UploadCoordinatorService {
     return random
   }
 
-  async getAnonymousUpload() {
-    /**
-     * As per Claude, we can do something like this:
-     * # User hits the main endpoint
-     * curl -F file=@screenshot.png https://pomf/upload
-     * # Gets redirected to optimal storage server
-     * -> 302 Redirect to https://bnnlag01.infra.pomf/anon-upload
-     * # Direct upload to storage server
-     * -> Returns: https://files.pomf.com/abc123/screenshot.png
-     *
-     * But, Gemini told me,
-     * The initial server (pomf/upload) would have to receive the entire
-     * file upload before it could issue the 302 redirect.
-     * This defeats the primary benefit of redirecting, which is to offload
-     * the bandwidth and processing from the coordinator to a
-     * dedicated storage server
-     */
-
+  async prepareAnonymousUpload() {
     const server = await this.selectOneHealthy()
     if (!server) {
       throw new NamedError('No healthy servers available for upload', 'server-unhealthy')
     }
 
+    const inode = new Inode()
+    inode.id = randomUUID()
+    inode.ownerId = null
+    inode.isPublic = true
+    inode.type = 'file'
+    await inode.save()
+
+    const fileItem = new FileItem()
+    fileItem.inodeId = inode.id
+    fileItem.status = 'pending'
+    // These will be updated by the ACK
+    fileItem.name = 'pending' 
+    fileItem.mimeType = 'pending'
+    fileItem.size = 0
+    await fileItem.save()
+
     return {
-      uploadUrl: `https://${server.domain}/anon-upload`,
-      freeSpace: server.spaceFree,
-      totalSpace: server.spaceTotal
+      uploadUrl: `https://${server.domain}/upload/${inode.id}`,
+      shareLink: `/files/${inode.id}`,
+      directLink: `https://${server.domain}/files/${inode.id}`,
     }
   }
 }
-
-export default new UploadCoordinatorService()

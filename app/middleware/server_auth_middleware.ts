@@ -12,7 +12,7 @@ export default class ServerAuthMiddleware {
 
     /**
      * Call next method in the pipeline and return its output
-     */
+    */
 
     const serverId = ctx.request.header('x-server-id')
     const apiKey = ctx.request.header('x-api-key')

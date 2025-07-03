@@ -1,83 +1,35 @@
-import { DateTime } from 'luxon'
 import { BaseModel, belongsTo, column } from '@adonisjs/lucid/orm'
-import { type FileType } from '../../shared/types/FileType.js'
-import { type BelongsTo } from '@adonisjs/lucid/types/relations'
-import User from './user.js'
+import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 import ServerShard from './server_shard.js'
-import Folder from './folder.js'
+import Inode from './inode.js'
 
 export default class FileItem extends BaseModel {
   @column({ isPrimary: true })
-  declare id: number
-
-  @column.dateTime({ autoCreate: true })
-  declare createdAt: DateTime
-
-  @column.dateTime({ autoCreate: true, autoUpdate: true })
-  declare updatedAt: DateTime
+  declare inodeId: string
 
   @column()
-  declare originalFileName: string
+  declare serverShardId: number | null
 
   @column()
-  /**
-   * File-determined file-type
-   */
+  declare name: string
+
+  @column()
   declare mimeType: string
 
   @column()
-  /**
-   * Server-determined file-type
-   */
-  declare fileType: FileType
+  declare size: number
 
   @column()
-  /**
-   * AWS S3-esque "file keys"
-   * which are just ${RANDOM_HASH(32)}/${original}.${ext}
-   */
-  declare fileKey: string
-
-  @column()
-  declare previewKey: string | null
-
-  @column()
-  declare previewBlurHash: string | null
-
-  /** Sharding and Ownership */
-
-  @column()
-  declare ownerId: string | null
-
-  @column()
-  declare serverShardId: number
-
-  @column()
-  declare isPrivate: boolean | null
-
-  @column()
-  declare fileSize: number 
-
-  /** Filesystem */
-  @column()
-  declare parentFolder: string | null
+  declare status: 'pending' | 'completed' | 'error'
 
   /** Relations */
-  @belongsTo(() => User, {
-    foreignKey: 'ownerId',
-    localKey: 'id',
+  @belongsTo(() => Inode, {
+    foreignKey: 'inodeId',
   })
-  declare user: BelongsTo<typeof User>
+  declare inode: BelongsTo<typeof Inode>
 
   @belongsTo(() => ServerShard, {
     foreignKey: 'serverShardId',
-    localKey: 'id',
   })
   declare serverShard: BelongsTo<typeof ServerShard>
-
-  @belongsTo(() => Folder, {
-    foreignKey: 'parentFolder',
-    localKey: 'folderUuid',
-  })
-  declare parent: BelongsTo<typeof Folder>
 }

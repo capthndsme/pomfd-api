@@ -1,12 +1,14 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, hasMany } from '@adonisjs/lucid/orm'
-import type { HasMany } from '@adonisjs/lucid/types/relations'
-import FileItem from './file_item.js'
-
+import { BaseModel, belongsTo, column } from '@adonisjs/lucid/orm'
+import Inode from './inode.js'
+import { type BelongsTo } from '@adonisjs/lucid/types/relations'
+ 
 export default class Folder extends BaseModel {
   @column({ isPrimary: true })
-  /** Our primary uuid  */
-  declare folderUuid: string
+  declare id: number
+
+  @column()
+  declare inodeId: string
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -15,35 +17,13 @@ export default class Folder extends BaseModel {
   declare updatedAt: DateTime
 
   @column()
-  declare ownerId: string
-
-  @column()
-  /**
-   * Nestings?
-   */
-  declare parentFolder: string | null
-
-  @column()
-  declare name: string
-
-  @column()
   declare description: string | null
 
-  @column()
-  declare isPrivate: boolean | null
-
   /** relationships */
-  @hasMany(() => Folder, {
-    foreignKey: 'parentFolder',
-    localKey: 'folderUuid',
+  @belongsTo(() => Inode, {
+    foreignKey: 'inodeId',
   })
-  declare childFolders: HasMany<typeof Folder>
-
-  @hasMany(() => FileItem, {
-    foreignKey: 'parentFolder',
-    localKey: 'folderUuid',
-  })
-  declare files: HasMany<typeof FileItem>
+  declare inode: BelongsTo<typeof Inode>
   
   
 

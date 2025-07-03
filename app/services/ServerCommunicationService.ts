@@ -1,6 +1,7 @@
 import { NamedError } from "#exceptions/NamedError";
 import FileItem from "#models/file_item";
 import ServerShard from "#models/server_shard";
+import User from "#models/user";
 import { DateTime } from "luxon";
 
 class ServerCommunicationService {
@@ -20,22 +21,46 @@ class ServerCommunicationService {
 
   async uploadAck(
     serverId: number,
-    /** The FileItem as received by server, returning to the central repository */
-    file: FileItem
+    inodeId: string,
+    metadata: { name: string; mimeType: string; size: number }
   ) {
-    const server = await ServerShard.find(serverId);
-
+    const server = await ServerShard.find(serverId)
     if (!server) throw new NamedError('Server not found', 'server-not-found')
 
-    const dentry = new FileItem();
-  
-    dentry.fill({...file});
-    dentry.serverShardId = serverId;
-    await dentry.save();
-    
-    return dentry;
+    const fileItem = await FileItem.find(inodeId)
+    if (!fileItem) throw new NamedError('FileItem not found', 'file-not-found')
 
+    if (fileItem.status !== 'pending') {
+      throw new NamedError('File is not pending upload', 'file-not-pending')
+    }
+
+    fileItem.merge({
+      serverShardId: serverId,
+      name: metadata.name,
+      mimeType: metadata.mimeType,
+      size: metadata.size,
+      status: 'completed',
+    })
+
+    await fileItem.save()
+
+    return fileItem
+  }
+
+  /** Validates a particular user's auth */
+  async validateUserToken(
+    userId: string,
+    userToken: string
+  ) {
+    const findUser = await User.find(userId);
+    if (!findUser) throw new NamedError('User not found', 'user-not-found')
+ 
+    const token = await User.accessTokens.find(
+      findUser,
+      userToken
+    )
     
+    return !!token;
   }
 
   
