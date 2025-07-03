@@ -32,8 +32,8 @@ class ServerCommunicationService {
     dentry.fill({...file});
     dentry.serverShardId = serverId;
     await dentry.save();
-    
-    return dentry.load('serverShard');
+    await dentry.load('serverShard')
+    return dentry 
 
     
   }
