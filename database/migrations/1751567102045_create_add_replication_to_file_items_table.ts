@@ -4,7 +4,7 @@ export default class extends BaseSchema {
   protected tableName = 'file_items'
 
   async up() {
-    this.schema.createTable(this.tableName, (table) => {
+    this.schema.alterTable(this.tableName, (table) => {
       // replication parent file
       table
         .uuid('replication_parent')
@@ -41,6 +41,25 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.dropTable(this.tableName)
+    
+    this.schema.alterTable(this.tableName, (table) => {
+      table.dropForeign('replication_parent')
+      table.dropColumn('replication_parent')
+
+      table.dropIndex(['owner_id'], 'owner_id_index')
+      table.dropIndex(['parent_folder'], 'parent_folder_index')
+      table.dropIndex(['replication_parent'], 'replication_parent_index')
+      table.dropIndex(['server_shard_id'], 'server_shard_id_index')
+
+      table.dropIndex(['owner_id', 'parent_folder', 'is_folder', 'name'], 'owner_root_files_index')
+      table.dropIndex(['parent_folder', 'is_private', 'is_folder', 'name'], 'folder_contents_index')
+      table.dropIndex(['owner_id', 'is_private'], 'owner_privacy_index')
+
+      table.dropIndex(['replication_parent', 'server_shard_id'], 'replica_location_index')
+      table.dropIndex(['server_shard_id', 'replication_parent'], 'shard_replication_index')
+
+      table.dropIndex(['parent_folder', 'name'], 'folder_name_index')
+    })
+    
   }
 }
