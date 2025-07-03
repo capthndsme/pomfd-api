@@ -13,3 +13,5 @@ export type ValidApiMessages =
   | 'server-not-found'
   | 'server-unhealthy'
   | 'einval'
+  | 'folder-exists'
+  | 'file-exists'

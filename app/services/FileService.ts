@@ -22,22 +22,22 @@ class FileService {
   /**
    * Lists a particular user's root files.
    */
-  async listRootFiles(userId: number, page: number = 1, perPage: number = 30): Promise<FileItem[]> {
+  async listRootFiles(userId: string, page: number = 1, perPage: number = 30): Promise<FileItem[]> {
     return FileItem.query()
       .where('user_id', userId)
-      .andWhereNull('parent_id')
+      .andWhereNull('parent_folder')
       .orderBy('is_dir', 'desc')
       .orderBy('name', 'asc')
       .paginate(page, perPage)
   }
 
   async listFileEntries(
-    parentId: number,
+    parentId: string,
     userId: string | null = null,
     page: number = 1,
     perPage: number = 30
   ) {
-    const query = FileItem.query().where('parent_id', parentId)
+    const query = FileItem.query().where('parent_folder', parentId)
 
     if (userId) {
       query.where('user_id', userId)
@@ -50,7 +50,7 @@ class FileService {
   }
 
   async getFile(
-    fileId: number,
+    fileId: string,
 
     userId: string | null = null
   ) {
@@ -63,6 +63,58 @@ class FileService {
     }
     return file
   }
+
+
+  async mkdir(
+    name: string,
+    parentId: string,
+    ownerId: string
+  ): Promise<FileItem> {
+    const existing = await FileItem.query()
+      .where('name', name)
+      .andWhere('ownerId', ownerId)
+      .andWhere('parentFolder', parentId)
+      .first()
+
+    if (existing) {
+      throw new NamedError('Folder with the same name already exists', 'folder-exists')
+    }
+
+    const folder = new FileItem()
+    folder.name = name
+    folder.parentFolder = parentId
+    folder.ownerId = ownerId
+    folder.isFolder = true
+    await folder.save()
+    return folder
+  }
+
+  async move(
+    fileId: string,
+    parentId: string,
+    ownerId: string
+  ) {
+    const file = await FileItem.query()
+      .where('id', fileId)
+      .andWhere('ownerId', ownerId)
+      .firstOrFail()
+
+    const existing = await FileItem.query()
+      .where('name', file.name)
+      .andWhere('ownerId', ownerId)
+      .andWhere('parentFolder', parentId)
+      .first()
+
+    if (existing) {
+      throw new NamedError('A file or folder with the same name already exists in the destination', 'file-exists')
+    }
+
+    file.parentFolder = parentId
+    await file.save()
+    return file
+  }
+
+ 
 }
 
 export default new FileService()

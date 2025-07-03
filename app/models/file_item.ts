@@ -63,6 +63,12 @@ export default class FileItem extends BaseModel {
   @column()
   declare fileSize: number | null
 
+  // Original file: replicationParent = null
+  // Replica: points to original's UUID
+
+  @column()
+  declare replicationParent: string | null
+
   /** Relations */
   @belongsTo(() => User, {
     foreignKey: 'ownerId',
@@ -87,4 +93,11 @@ export default class FileItem extends BaseModel {
     localKey: 'id',
   })
   declare children: HasMany<typeof FileItem>
+
+  // replicas
+  @hasMany(() => FileItem, {
+    foreignKey: 'replicationParent',
+    localKey: 'id',
+  })
+  declare replicas: HasMany<typeof FileItem>
 }
