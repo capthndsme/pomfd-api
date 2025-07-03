@@ -9,7 +9,7 @@ class FileService {
    */
   async resolveFileAlias(alias: string, userId: string | null = null): Promise<FileItem> {
     const uuid = UUIDService.decode(alias)
-    const file = await FileItem.findBy('uuid', uuid)
+    const file = await FileItem.findBy('id', uuid)
     if (!file) throw new NamedError('File not found', 'not-found')
 
     if (file.isPrivate) {
