@@ -13,6 +13,10 @@ function authRoutes(router: HttpRouterService) {
       router.post('/logout', [AuthController, 'logout'])
       router.get('/verify-token', [AuthController, 'verifyToken'])
     }).use(middleware.auth())
+
+    // verification for backend
+    router.post('/verify-user-token', [AuthController, 'verifyUserToken'])
+    .use(middleware.serverAuth()) // only 
   }).prefix('auth')
   
 }

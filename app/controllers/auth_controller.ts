@@ -95,4 +95,32 @@ export default class AuthController {
       return response.status(500).send(createFailure('Internal server error'))
     }
   }
+
+  /** Verify a particular user to token, for backend to backend usage */
+  async verifyUserToken({ request, response }: HttpContext) {
+    const { userId, token } = request.body()
+
+    if (!userId || !token) {
+      return response.badRequest(createFailure('User ID and token are required', 'einval'))
+    }
+
+    try {
+      const user = await User.find(userId)
+      if (!user) {
+        return response.notFound(createFailure('User not found', 'user-not-found'))
+      }
+
+      const isValid = await User.accessTokens.verify(token)
+
+      if (isValid) {
+        return response.ok(createSuccess(null, 'Token is valid', 'success'))
+      } else {
+        return response.unauthorized(createFailure('Token is invalid or expired', 'token-invalid'))
+      }
+    } catch (error) {
+      return response.internalServerError(createFailure('Internal server error'))
+    }
+  }
+  
+  
 }
