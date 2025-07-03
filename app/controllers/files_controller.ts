@@ -1,6 +1,7 @@
 import FileService from '#services/FileService'
 import type { HttpContext } from '@adonisjs/core/http'
 import { createFailure, createSuccess } from '../../shared/types/ApiBase.js'
+import { NamedError } from '#exceptions/NamedError'
 
 export default class FilesController {
   // 1. anonymous resolvation
@@ -61,9 +62,57 @@ export default class FilesController {
       userId = auth.user!.id
     }
 
-    const file = await FileService.getFile(Number(fileId), userId)
+    const file = await FileService.getFile(fileId, userId)
     return response.ok(createSuccess(file, 'File found', 'success'))
   }
 
+  // mkdir 
+  async mkdir({ request, response, auth }: HttpContext) {
+    const { name, parentId } = request.body()
+    const user = auth.user
+
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    if (!name) {
+      return response.badRequest(createFailure('Folder name is required', 'einval'))
+    }
+
+    try {
+      const folder = await FileService.mkdir(name, parentId, user.id)
+      return response.created(createSuccess(folder, 'Folder created successfully', 'success'))
+    } catch (error) {
+      if (error instanceof NamedError && error.name === 'folder-exists') {
+        return response.conflict(createFailure(error.message, 'folder-exists'))
+      }
+      return response.internalServerError(createFailure('Failed to create folder'))
+    }
+  }
+
+  async moveFile({ request, response, auth }: HttpContext) {
+    const { fileId, parentId } = request.body()
+    const user = auth.user
+
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    if (!fileId || !parentId) {
+      return response.badRequest(createFailure('File ID and parent ID are required', 'einval'))
+    }
+
+    try {
+      const file = await FileService.move(fileId, parentId, user.id)
+      return response.ok(createSuccess(file, 'File moved successfully', 'success'))
+    } catch (error) {
+      if (error instanceof NamedError && error.name === 'file-exists') {
+        return response.conflict(createFailure(error.message, 'file-exists'))
+      }
+      return response.internalServerError(createFailure('Failed to move file'))
+    }
+  }
+  
  
 }
+
