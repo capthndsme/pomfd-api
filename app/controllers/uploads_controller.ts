@@ -10,10 +10,18 @@ export default class UploadsController {
 
   async findAnonymousUrl({ response }: HttpContext) {
     try {
-          const { uploadUrl } = await UploadCoordinatorService.getAnonymousUpload()
+          const { uploadUrl, rest } = await UploadCoordinatorService.getAnonymousUpload()
     return response.ok(
 `Upload to URL: ${uploadUrl}
-Example: curl -F file=@{file} ${uploadUrl}`
+Example: curl -F file=@{file} ${uploadUrl}
+
+Other Endpoints:
+${rest ? rest.map((r) => r).join('\n') : 'No other servers available.'}
+
+
+`
+
+
     ) 
     } catch (e) {
       return response.serviceUnavailable(

@@ -23,9 +23,14 @@ class UploadCoordinatorService {
     if (!server) {
       throw new NamedError('No healthy servers available for upload', 'server-unhealthy')
     }
+    const restOfServers = await this.findAvailableServers()
+
 
     return {
       uploadUrl: `https://${server.domain}/anon-upload`,
+      // return rest of servers, filtering the selected one helath.
+      rest: restOfServers.filter(s => s.id !== server.id).map(s => `https://${s.domain}/anon-upload`),
+      
       freeSpace: server.spaceFree,
       totalSpace: server.spaceTotal
     }
