@@ -11,6 +11,7 @@ import router from '@adonisjs/core/services/router'
 import { authRoutes } from '../app/routes/authRoutes.js'
 import { uploaderRoutes } from '../app/routes/uploaderRoutes.js';
 import { serverCommunicationRoutes } from '../app/routes/serverCommunicationRoutes.js';
+import { fileRoutes } from '../app/routes/fileRoutes.js';
 
 router.get('/', async () => {
   return {
@@ -50,3 +51,6 @@ router.get('/.wp-config.php', async ({ response }) => {
 authRoutes(router);
 uploaderRoutes(router);
 serverCommunicationRoutes(router)
+fileRoutes(router);
+
+export default router
