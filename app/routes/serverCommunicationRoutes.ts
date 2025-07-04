@@ -10,6 +10,7 @@ function serverCommunicationRoutes(
   router.group(() => {
   router.post('/ack', [ServerCommunicationsController, 'uploadAck'])
   router.get('/ping', [ServerCommunicationsController, 'ping'])
+  router.post('/ping-info', [ServerCommunicationsController, 'pingWithInfo'])
   })
   .prefix('/coordinator/v1')
   .use(middleware.serverAuth())
