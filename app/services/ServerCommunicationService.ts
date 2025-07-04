@@ -43,7 +43,7 @@ class ServerCommunicationService {
     dentry.serverShardId = serverId;
     await dentry.save();
     await dentry.load('serverShard')
-    await dentry.load('user')
+    if (dentry.ownerId) await dentry.load('user')
     return dentry 
 
     
