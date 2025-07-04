@@ -16,6 +16,9 @@ class FileService {
       if (!userId) throw new NamedError('File is private. Login required', 'not-found')
       if (file.ownerId !== userId) throw new NamedError('File is private. No access', 'not-found')
     }
+    file.load('serverShard')
+    file.load('user')
+    file.load('replicas')
     return file
   }
 
