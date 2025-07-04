@@ -17,7 +17,8 @@ class FileService {
       if (file.ownerId !== userId) throw new NamedError('File is private. No access', 'not-found')
     }
     await file.load('serverShard')
-    await file.load('user')
+    if (file.ownerId) await file.load('user')
+    
     await file.load('replicas')
     return file
   }
