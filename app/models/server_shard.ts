@@ -34,6 +34,22 @@ export default class ServerShard extends BaseModel {
   @column()
   declare spaceFree: number
 
+  @column()
+  declare memoryFree: number | null
+
+  @column()
+  declare memoryTotal: number| null
+
+  @column()
+  declare cpuUse: number| null
+
+  @column()
+  declare bwIn: number| null
+
+  @column()
+  declare bwOut: number| null
+
+
   @column.dateTime()
   declare lastHeartbeat: DateTime
 
