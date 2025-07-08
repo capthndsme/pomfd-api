@@ -55,14 +55,14 @@ export default class ServerCommunicationsController {
   }
 
   async updateFileMeta({ request, response }: HttpContext) {
-    const { fileId, itemWidth, itemHeight, blurHash, fileThumbName } = request.body()
-    if (!fileId || !itemWidth || !itemHeight || !blurHash || !fileThumbName)
+    const { id, itemWidth, itemHeight, previewBlurHash, fileThumbName } = request.body() as FileItem & {fileThumbName: string}
+    if (!id || !itemWidth || !itemHeight || !previewBlurHash || !fileThumbName)
       throw new NamedError('invalid argument', 'einval')
     const file = await ServerCommunicationService.updateFileMeta(
-      fileId,
+      id,
       itemWidth,
       itemHeight,
-      blurHash,
+      previewBlurHash,
       fileThumbName
 
     )
