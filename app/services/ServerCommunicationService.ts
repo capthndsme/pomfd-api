@@ -57,10 +57,11 @@ class ServerCommunicationService {
       // only previewable types
       .whereIn('file_type', ['IMAGE', 'VIDEO'])
       .andWhereNull('transcode_status')
-      .limit(5)
+      .preload('serverShard')
+      .limit(8)
 
     try {
-      for  (const file of files) {
+      for (const file of files) {
      FileService.generatePresignedUrl(file, 3600)
       } 
     
