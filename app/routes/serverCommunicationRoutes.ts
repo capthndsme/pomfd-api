@@ -1,4 +1,5 @@
  
+import { middleware } from "#start/kernel";
 import { HttpRouterService } from "@adonisjs/core/types";
 
 const ServerCommunicationsController = () => import('#controllers/server_communications_controller')
@@ -21,7 +22,7 @@ function serverCommunicationRoutes(
   
   })
   .prefix('/coordinator/v1')
-  //.use(middleware.serverAuth())
+  .use(middleware.serverAuth())
   
 }
 
