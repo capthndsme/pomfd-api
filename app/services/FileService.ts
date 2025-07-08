@@ -1,5 +1,6 @@
 import { NamedError } from '#exceptions/NamedError'
 import FileItem from '#models/file_item'
+import { createHmac } from 'crypto'
 import UUIDService from './UUIDService.js'
 
 class FileService {
@@ -20,6 +21,7 @@ class FileService {
     if (file.ownerId) await file.load('user')
     
     await file.load('replicas')
+    await file.load('previews')
     return file
   }
 
@@ -65,6 +67,8 @@ class FileService {
       if (!userId) throw new NamedError('File is private. Login required', 'not-found')
       if (file.ownerId !== userId) throw new NamedError('File is private. No access', 'not-found')
     }
+    await file.load('replicas')
+    await file.load('previews')
     return file
   }
 
@@ -118,7 +122,74 @@ class FileService {
     return file
   }
 
+
+    /**
+   * Generates a presigned URL for a given file path for private files.
+   * @param filePath The path to the file relative to the 'private' directory (e.g., 'user-uploads/document.pdf').
+   * @param expiresIn Seconds until the URL expires.
+   * @returns The full, shareable presigned URL.
+   */
+  generatePresignedUrl(file: FileItem, expiresIn: number): string {
+    const expires = Date.now() + expiresIn * 1000 // expires timestamp in milliseconds
+    if (!file.fileKey || !file.serverShard.apiKey) return ''
+
+    const signature = this.#createSignature(file.fileKey, file.serverShard.apiKey, expires)
+
+    // Construct the URL safely. The base URL should not have a trailing slash.
+    return `${file.serverShard.domain}/p/${file.fileKey}?signature=${signature}&expires=${expires}`
+  }
+
+  presignPreviews(file: FileItem) {
+    const previews = file.previews
+    if (!previews) return []
+    return previews.map((preview) => {
+      const expires = Date.now() + 3600 * 1000 // 1 hour expiration
+      const signature = this.#createSignature(preview.previewKey, file.serverShard.apiKey, expires)
+      return `${file.serverShard.domain}/p/${preview.previewKey}?signature=${signature}&expires=${expires}`
+    })
+  }
+
+  presignPreviewsAndReturn(file: FileItem): FileItem {
+    const previews = file.previews
+    if (!previews) return file
+    file.previews = previews.map((preview) => {
+      const expires = Date.now() + 3600 * 1000 // 1 hour expiration
+      const signature = this.#createSignature(preview.previewKey, file.serverShard.apiKey, expires)
+      preview.previewKey = `${file.serverShard.domain}/p/${preview.previewKey}?signature=${signature}&expires=${expires}`
+      return preview
+    }) as typeof file.previews  
+    return file
+    
+  }
+
+    /**
+   * Creates an HMAC signature for the file path and expiration.
+   */
+  #createSignature(filePath: string, serverKey: string, expires: number): string {
+    const data = `${filePath}|${expires}` // Use a separator that's not allowed in file paths
+    return createHmac('sha256', serverKey).update(data).digest('hex')
+  }
  
+  /**
+   * Presigns the actual file entity.
+   * Do not save.
+   */
+  presignFile(file: FileItem) {
+    if (!file.isPrivate) return file;
+    file.fileKey = this.generatePresignedUrl(file, 3600)
+    // presign thumbnailkey
+    if (file.previewKey) {
+      file.previewKey = this.generatePresignedUrl(file, 3600)
+    }
+    // presign previews
+    if (file.previews) {
+      const merge = this.presignPreviewsAndReturn(file)
+      file.previews = merge.previews
+    }
+    file.save = async () => {throw new Error('Thou shalt not save!')};
+    return file
+
+  }
 }
 
 export default new FileService()

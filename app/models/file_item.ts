@@ -5,6 +5,7 @@ import { type BelongsTo, type HasMany } from '@adonisjs/lucid/types/relations'
 import User from './user.js'
 import ServerShard from './server_shard.js'
 import { randomUUID } from 'crypto'
+import FilePreview from './file_preview.js'
 
 export default class FileItem extends BaseModel {
   @column({ isPrimary: true })
@@ -52,10 +53,26 @@ export default class FileItem extends BaseModel {
   declare fileKey: string | null
 
   @column()
+  /** Thumbnail preview, vs FilePreviews more-specific ones. */
   declare previewKey: string | null
 
   @column()
   declare previewBlurHash: string | null
+
+
+  @column()
+  declare itemWidth: number | null
+
+  @column()
+  declare itemHeight: number | null
+
+  @column()
+  declare transcodeStatus: 'pending' | 'finished' | 'invalid-file' | null
+
+  @column.dateTime()
+  declare transcodeStartedAt: DateTime | null
+
+
 
   @column()
   declare serverShardId: number | null
@@ -100,4 +117,12 @@ export default class FileItem extends BaseModel {
     localKey: 'id',
   })
   declare replicas: HasMany<typeof FileItem>
+
+  // previews if any 
+  @hasMany(() => FilePreview, {
+    foreignKey: 'fileItemId',
+    localKey: 'id',
+  })
+  declare previews: HasMany<typeof FilePreview>
+  
 }

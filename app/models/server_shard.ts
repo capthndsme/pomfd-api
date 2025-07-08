@@ -15,6 +15,9 @@ declare updatedAt: DateTime
 declare domain: string
 
 @column()
+declare type: 'store-local' | 'store-remote' | 'file-processing' | 's3-compatible'
+
+@column()
 /**
  * Is the server paired, as in paired?
  */
@@ -48,6 +51,19 @@ declare bwIn: number| null
 
 @column()
 declare bwOut: number| null
+
+@column()
+declare nodeName: string | null
+
+/** Advanced server select algorithms */
+@column()
+declare lat: number | null
+
+@column()
+declare lng: number | null
+
+
+
 
 
 @column.dateTime()

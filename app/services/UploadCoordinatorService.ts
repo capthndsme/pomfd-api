@@ -3,7 +3,22 @@ import ServerShard from '#models/server_shard'
 
 class UploadCoordinatorService {
   async findAvailableServers() {
-    return await ServerShard.query().where('is_up', true).orderBy('updated_at', 'asc').limit(5)
+    return await ServerShard.query()
+    .where('is_up', true)
+    .andWhere(whereType => {
+      // current compatible drivers
+      whereType.where('type', 'store-local')
+      whereType.orWhere('type', 'store-remote')
+      whereType.orWhere('type', 's3-compatible')
+    })
+    // should be at least 1gb free. space free is in KiB.
+    .andWhere('space_free', '>', 1 * 1024 * 1024)
+ 
+    .orderBy('updated_at', 'asc')
+    // order by free space
+    .orderBy('space_free', 'desc')
+    
+    .limit(6)
   }
 
   async selectOneHealthy() {
@@ -18,21 +33,21 @@ class UploadCoordinatorService {
   }
 
   async getAnonymousUpload() {
-
     const server = await this.selectOneHealthy()
     if (!server) {
       throw new NamedError('No healthy servers available for upload', 'server-unhealthy')
     }
     const restOfServers = await this.findAvailableServers()
 
-
     return {
       uploadUrl: `https://${server.domain}/anon-upload`,
       // return rest of servers, filtering the selected one helath.
-      rest: restOfServers.filter(s => s.id !== server.id).map(s => `https://${s.domain}/anon-upload`),
-      
+      rest: restOfServers
+        .filter((s) => s.id !== server.id)
+        .map((s) => `https://${s.domain}/anon-upload`),
+
       freeSpace: server.spaceFree,
-      totalSpace: server.spaceTotal
+      totalSpace: server.spaceTotal,
     }
   }
 }

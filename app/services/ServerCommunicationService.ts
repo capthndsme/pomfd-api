@@ -3,14 +3,16 @@ import FileItem from "#models/file_item";
 import ServerShard from "#models/server_shard";
 import { DateTime } from "luxon";
 import { PingWithInfo } from "../../shared/types/request/PingWithInfo.js";
+import FileService from "./FileService.js";
+
 
 class ServerCommunicationService {
 
-  
+
   async ping(
     serverId: number,
     info?: PingWithInfo
-  ): Promise<void> { 
+  ): Promise<void> {
     const server = await ServerShard.find(serverId);
     if (!server) throw new NamedError('Server not found', 'server-not-found')
 
@@ -23,7 +25,7 @@ class ServerCommunicationService {
     if (info?.cpuUse) server.cpuUse = info.cpuUse
     if (info?.ramFreeBytes) server.memoryFree = info.ramFreeBytes
     if (info?.ramTotalBytes) server.memoryTotal = info.ramTotalBytes
-    
+
     console.log(`received ping from ${server.domain}`)
     await server.save();
   }
@@ -38,18 +40,96 @@ class ServerCommunicationService {
     if (!server) throw new NamedError('Server not found', 'server-not-found')
 
     const dentry = new FileItem();
-  
-    dentry.fill({...file});
+
+    dentry.fill({ ...file });
     dentry.serverShardId = serverId;
     await dentry.save();
     await dentry.load('serverShard')
     if (dentry.ownerId) await dentry.load('user')
-    return dentry 
+    return dentry
+  }
 
+  /**
+   * finds no-metadata files.
+   */
+  async findFileWork() {
+    const files = await FileItem.query()
+      // only previewable types
+      .whereIn('file_type', ['IMAGE', 'VIDEO'])
+      .andWhereNull('transcode_status')
+      .limit(5)
+
+    try {
+      for  (const file of files) {
+     FileService.generatePresignedUrl(file, 3600)
+      } 
+    
+    } catch (e) {
+      console.warn(`presign fail`, e)
+    }
+    return files;
+  }
+
+  async markFile(fileId: string, status: FileItem['transcodeStatus']) {
+    const file = await FileItem.findOrFail(fileId)
+    file.transcodeStartedAt = DateTime.now()
+    file.transcodeStatus = status
+    await file.save()
+    return file
+  }
+
+  async addPreviewToFile(
+    fileId: string,
+    previewFilename: string,
+    quality: '480' | '720' | '1080',
+    mimeType: string
+  ) {
+    const file = await FileItem.findOrFail(fileId)
+    const preview = await file.related('previews').create({
+      previewKey: previewFilename,
+      quality,
+      mimeType
+    })
+    await preview.save()
+    return preview
+  }
+
+  async updateFileMeta(
+    fileId: string,
+    itemWidth: number,
+    itemHeight: number,
+    blurHash: string,
+    fileThumbName: string,
+  ) {
+    const file = await FileItem.findOrFail(fileId)
+    file.itemWidth = itemWidth
+    file.itemHeight = itemHeight
+    file.previewBlurHash = blurHash
+    file.previewKey = fileThumbName
+    
+    await file.save()
+    return file
     
   }
 
-  
+  async validateServerToken(
+    serverId: number,
+    token: string
+  ) {
+    const server = await ServerShard.find(serverId)
+    if (!server) {
+      throw new NamedError('Server not found', 'server-not-found')
+    }
+
+    if (server.apiKey !== token) {
+      throw new NamedError('Invalid server token', 'invalid-credentials')
+    }
+
+    return true
+  }
+
+
+
 }
 
 

@@ -122,5 +122,14 @@ export default class AuthController {
     }
   }
   
+  async getMyProfile({ auth, response }: HttpContext) {
+    try {
+      const user = auth.getUserOrFail()
+      return response.ok(createSuccess(user, 'User profile retrieved successfully', 'success'))
+    } catch (error) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+  }
+  
   
 }
