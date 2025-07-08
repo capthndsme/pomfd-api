@@ -71,7 +71,7 @@ export default class ServerCommunicationsController {
 
   // validate other server
   async validateServerToken({ request, response }: HttpContext) {
-    const { token, serverId } = request.qs()
+    const { token, serverId } = request.body()
     if (!token || !serverId) throw new NamedError('invalid argument', 'einval')
     const isValid = await ServerCommunicationService.validateServerToken(serverId, token)
     if (isValid) {
