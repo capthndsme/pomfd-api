@@ -17,7 +17,7 @@ function serverCommunicationRoutes(
   router.post('/mark-file', [ServerCommunicationsController, 'markFile'])
   router.post('/ack-preview', [ServerCommunicationsController, 'addPreviewToFile'])
   router.post('/ack-meta', [ServerCommunicationsController, 'updateFileMeta'])
-  router.get('/validate-server-token', [ServerCommunicationsController, 'validateServerToken'])
+  router.post('/validate-server-token', [ServerCommunicationsController, 'validateServerToken'])
 
   
   })
