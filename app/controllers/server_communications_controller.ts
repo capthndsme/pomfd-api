@@ -43,14 +43,14 @@ export default class ServerCommunicationsController {
 
   async addPreviewToFile({ request, response }: HttpContext) {
     
-    const { filePtr, previewFilename, quality, mimeType } = request.body()
+    const { filePtr, previewKey, quality, mimeType } = request.body()
     const fileParse = typeof filePtr === 'string' ? JSON.parse(filePtr) : filePtr
     const fileId = fileParse.id
-    if (!fileId || !previewFilename || !quality || !mimeType)
+    if (!fileId  || !quality || !mimeType)
       throw new NamedError('invalid argument', 'einval')
     const preview = await ServerCommunicationService.addPreviewToFile(
       fileId,
-      previewFilename,
+      previewKey.split('/').pop(),
       quality,
       mimeType
     )
