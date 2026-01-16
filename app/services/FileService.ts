@@ -19,7 +19,7 @@ class FileService {
     }
     await file.load('serverShard')
     if (file.ownerId) await file.load('user')
-    
+
     await file.load('replicas')
     await file.load('previews')
     return file
@@ -30,9 +30,9 @@ class FileService {
    */
   async listRootFiles(userId: string, page: number = 1, perPage: number = 30): Promise<FileItem[]> {
     return FileItem.query()
-      .where('user_id', userId)
+      .where('owner_id', userId)
       .andWhereNull('parent_folder')
-      .orderBy('is_dir', 'desc')
+      .orderBy('is_folder', 'desc')
       .orderBy('name', 'asc')
       .paginate(page, perPage)
   }
@@ -46,13 +46,13 @@ class FileService {
     const query = FileItem.query().where('parent_folder', parentId)
 
     if (userId) {
-      query.where('user_id', userId)
+      query.where('owner_id', userId)
     } else {
       // only view public files.
       query.where('is_private', false).orWhereNull('is_private')
     }
 
-    return query.orderBy('is_dir', 'desc').orderBy('name', 'asc').paginate(page, perPage)
+    return query.orderBy('is_folder', 'desc').orderBy('name', 'asc').paginate(page, perPage)
   }
 
   async getFile(
@@ -123,12 +123,12 @@ class FileService {
   }
 
 
-    /**
-   * Generates a presigned URL for a given file path for private files.
-   * @param filePath The path to the file relative to the 'private' directory (e.g., 'user-uploads/document.pdf').
-   * @param expiresIn Seconds until the URL expires.
-   * @returns The full, shareable presigned URL.
-   */
+  /**
+ * Generates a presigned URL for a given file path for private files.
+ * @param filePath The path to the file relative to the 'private' directory (e.g., 'user-uploads/document.pdf').
+ * @param expiresIn Seconds until the URL expires.
+ * @returns The full, shareable presigned URL.
+ */
   generatePresignedUrl(file: FileItem, expiresIn: number): string {
     const expires = Date.now() + expiresIn * 1000 // expires timestamp in milliseconds
     if (!file.fileKey || !file.serverShard.apiKey) return ''
@@ -157,19 +157,19 @@ class FileService {
       const signature = this.#createSignature(preview.previewKey, file.serverShard.apiKey, expires)
       preview.previewKey = `${file.serverShard.domain}/p/${preview.previewKey}?signature=${signature}&expires=${expires}`
       return preview
-    }) as typeof file.previews  
+    }) as typeof file.previews
     return file
-    
+
   }
 
-    /**
-   * Creates an HMAC signature for the file path and expiration.
-   */
+  /**
+ * Creates an HMAC signature for the file path and expiration.
+ */
   #createSignature(filePath: string, serverKey: string, expires: number): string {
     const data = `${filePath}|${expires}` // Use a separator that's not allowed in file paths
     return createHmac('sha256', serverKey).update(data).digest('hex')
   }
- 
+
   /**
    * Presigns the actual file entity.
    * Do not save.
@@ -186,7 +186,7 @@ class FileService {
       const merge = this.presignPreviewsAndReturn(file)
       file.previews = merge.previews
     }
-    file.save = async () => {throw new Error('Thou shalt not save!')};
+    file.save = async () => { throw new Error('Thou shalt not save!') };
     return file
 
   }
