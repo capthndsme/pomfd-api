@@ -3,6 +3,9 @@ import { createFailure, createSuccess } from '../../shared/types/ApiBase.js'
 import { LoginRequest, CreateAccountRequest } from '../../shared/types/request/AuthRequest.js'
 import User from '#models/user'
 import hash from '@adonisjs/core/services/hash'
+import db from '@adonisjs/lucid/services/db'
+import { createHash } from 'crypto'
+import { DateTime } from 'luxon'
 
 export default class AuthController {
   async login({ request, response }: HttpContext) {
@@ -105,25 +108,70 @@ export default class AuthController {
     }
 
     try {
-      const user = await User.find(userId)
-      if (!user) {
-        return response.notFound(createFailure('User not found', 'user-not-found'))
+      // Manual Verification Logic - Ported from Java Service
+      // Format: oat_{base64_id}.{base64_secret}
+
+      const TOKEN_PREFIX = 'oat_'
+      if (!token.startsWith(TOKEN_PREFIX)) {
+        return response.unauthorized(createFailure('Invalid token format', 'token-invalid'))
       }
 
-      // Verify the token by checking if it exists and is valid for this user
-      // The DbAccessTokensProvider will handle the hashing and comparison
+      const withoutPrefix = token.substring(TOKEN_PREFIX.length)
+      const dotIndex = withoutPrefix.indexOf('.')
+
+      if (dotIndex === -1) {
+        return response.unauthorized(createFailure('Invalid token format', 'token-invalid'))
+      }
+
+      const base64Id = withoutPrefix.substring(0, dotIndex)
+      const base64Secret = withoutPrefix.substring(dotIndex + 1)
+
+      let tokenId: string
+      let secret: string
+
       try {
-        const tokenModel = await User.accessTokens.find(user, token)
-
-        if (tokenModel) {
-          return response.ok(createSuccess(null, 'Token is valid', 'success'))
-        } else {
-          return response.unauthorized(createFailure('Token is invalid or expired', 'token-invalid'))
-        }
-      } catch (tokenError) {
-        // Token not found or invalid
-        return response.unauthorized(createFailure('Token is invalid or expired', 'token-invalid'))
+        tokenId = Buffer.from(base64Id, 'base64').toString('utf-8')
+        secret = Buffer.from(base64Secret, 'base64').toString('utf-8')
+      } catch (e) {
+        return response.unauthorized(createFailure('Invalid token encoding', 'token-invalid'))
       }
+
+      // Hash the secret
+      const hash = createHash('sha256').update(secret).digest('hex')
+
+      // DB Lookup
+      const tokenRow = await db
+        .from('auth_access_tokens')
+        .where('id', tokenId)
+        .first()
+
+      if (!tokenRow) {
+        return response.unauthorized(createFailure('Token not found', 'token-invalid'))
+      }
+
+      // Verify hash
+      if (tokenRow.hash !== hash) {
+        return response.unauthorized(createFailure('Token hash mismatch', 'token-invalid'))
+      }
+
+      // Verify Owner
+      if (String(tokenRow.tokenable_id) !== String(userId)) {
+        return response.unauthorized(createFailure('Token does not belong to this user', 'token-invalid'))
+      }
+
+      // Verify Expiry
+      if (tokenRow.expires_at) {
+        const expiresAt = typeof tokenRow.expires_at === 'string'
+          ? DateTime.fromSQL(tokenRow.expires_at)
+          : DateTime.fromJSDate(tokenRow.expires_at)
+
+        if (expiresAt < DateTime.now()) {
+          return response.unauthorized(createFailure('Token expired', 'token-invalid'))
+        }
+      }
+
+      return response.ok(createSuccess(null, 'Token is valid', 'success'))
+
     } catch (error) {
       console.error('Error verifying user token:', error)
       return response.internalServerError(createFailure('Internal server error'))
