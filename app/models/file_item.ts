@@ -32,7 +32,7 @@ export default class FileItem extends BaseModel {
   declare updatedAt: DateTime
 
   @column()
-  declare ownerId: string
+  declare ownerId: string | null
 
   @column()
   declare parentFolder: string | null
