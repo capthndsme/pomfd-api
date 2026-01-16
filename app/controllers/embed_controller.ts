@@ -48,7 +48,7 @@ export default class EmbedController {
             } catch {
                 if (alias.includes('.')) {
                     const payload = FileShareTokenService.verify(alias)
-                    file = await FileService.getFile(payload.fileId, null)
+                    file = await FileService.getFileUnsafe(payload.fileId)
                     await file.load('serverShard')
                     await file.load('previews')
                 } else {

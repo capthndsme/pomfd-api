@@ -15,19 +15,26 @@ export default class FilesController {
     const { alias } = request.params()
     // if user is not authed, pass in null.
     const user = auth.user
-    if (user) {
-      // authenticate our user first
-      await auth.check()
-      if (!auth.isAuthenticated) {
-        return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    try {
+      if (user) {
+        // authenticate our user first
+        await auth.check()
+        if (!auth.isAuthenticated) {
+          return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+        } else {
+          const file = await FileService.resolveFileAlias(alias, user.id)
+          return response.ok(createSuccess(file, 'File found', 'success'))
+        }
       } else {
-        const file = await FileService.resolveFileAlias(alias, user.id)
+        // anonymous passthrough
+        const file = await FileService.resolveFileAlias(alias)
         return response.ok(createSuccess(file, 'File found', 'success'))
       }
-    } else {
-      // anonymous passthrough
-      const file = await FileService.resolveFileAlias(alias)
-      return response.ok(createSuccess(file, 'File found', 'success'))
+    } catch (error) {
+      if (error instanceof NamedError) {
+        return response.notFound(createFailure(error.message, error.name))
+      }
+      return response.internalServerError(createFailure('Failed to resolve file'))
     }
   }
 
@@ -426,7 +433,8 @@ export default class FilesController {
         shareExpiresAtMs = share.expiresAt ? share.expiresAt.toMillis() : null
       }
 
-      const file = await FileService.getFile(fileId)
+      // Share resolution grants access, so bypass privacy checks.
+      const file = await FileService.getFileUnsafe(fileId)
       if (!file) {
         return response.notFound(createFailure('File not found', 'not-found'))
       }
@@ -485,6 +493,9 @@ export default class FilesController {
         },
       }, 'Share retrieved', 'success'))
     } catch (e) {
+      if (e instanceof NamedError) {
+        return response.notFound(createFailure(e.message, e.name))
+      }
       return response.notFound(createFailure('Invalid or expired share link', 'not-found'))
     }
   }

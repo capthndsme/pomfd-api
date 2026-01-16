@@ -49,7 +49,7 @@ export default class OEmbedController {
                 } catch {
                     if (alias.includes('.')) {
                         const payload = FileShareTokenService.verify(alias)
-                        const f = await FileService.getFile(payload.fileId, null)
+                        const f = await FileService.getFileUnsafe(payload.fileId)
                         await f.load('serverShard')
                         return f
                     }

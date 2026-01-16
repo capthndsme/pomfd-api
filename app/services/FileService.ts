@@ -129,6 +129,19 @@ class FileService {
     return file
   }
 
+  /**
+   * Fetch a file by ID WITHOUT enforcing privacy checks.
+   * This is intended for share-surface resolution where possession of a valid share
+   * (DB row or signed token) grants access, regardless of isPrivate.
+   */
+  async getFileUnsafe(fileId: string): Promise<FileItem> {
+    const file = await FileItem.findBy('id', fileId)
+    if (!file) throw new NamedError('File not found', 'not-found')
+    await file.load('replicas')
+    await file.load('previews')
+    return file
+  }
+
 
   async mkdir(
     name: string,
