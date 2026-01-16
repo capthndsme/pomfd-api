@@ -15,3 +15,9 @@ export type ValidApiMessages =
   | 'einval'
   | 'folder-exists'
   | 'file-exists'
+  | 'folder-not-found'
+  | 'share-not-found'
+  | 'share-expired'
+  | 'password-required'
+  | 'invalid-password'
+

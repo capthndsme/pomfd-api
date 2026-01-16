@@ -4,6 +4,7 @@ import ServerShard from "#models/server_shard";
 import { DateTime } from "luxon";
 import { PingWithInfo } from "../../shared/types/request/PingWithInfo.js";
 import FileService from "./FileService.js";
+import SocketIoService from "./SocketIoService.js";
 
 
 class ServerCommunicationService {
@@ -46,6 +47,17 @@ class ServerCommunicationService {
     await dentry.save();
     await dentry.load('serverShard')
     if (dentry.ownerId) await dentry.load('user')
+
+    // 🔥 NEW: Push to transcoder via Socket.IO for instant processing
+    // Only dispatch if it's a media file that needs transcoding
+    if (dentry.fileType === 'IMAGE' || dentry.fileType === 'VIDEO') {
+      if (SocketIoService.isBooted()) {
+        SocketIoService.dispatchNewFile(dentry).catch((err) => {
+          console.warn('Socket dispatch failed (will be picked up by polling):', err)
+        })
+      }
+    }
+
     return dentry
   }
 
@@ -58,13 +70,16 @@ class ServerCommunicationService {
       .whereIn('file_type', ['IMAGE', 'VIDEO'])
       .andWhereNull('transcode_status')
       .preload('serverShard')
+      // we should show the backend working previews (if any)
+      // for resumability.
+      .preload('previews')
       .limit(8)
 
     try {
       for (const file of files) {
-     FileService.generatePresignedUrl(file, 3600)
-      } 
-    
+        FileService.generatePresignedUrl(file, 3600)
+      }
+
     } catch (e) {
       console.warn(`presign fail`, e)
     }
@@ -107,10 +122,10 @@ class ServerCommunicationService {
     file.itemHeight = itemHeight
     file.previewBlurHash = blurHash
     file.previewKey = fileThumbName
-    
+
     await file.save()
     return file
-    
+
   }
 
   async validateServerToken(
