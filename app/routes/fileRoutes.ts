@@ -6,7 +6,6 @@ function fileRoutes(router: HttpRouterService) {
   router
     .group(() => {
       // Public routes (auth optional)
-      router.get('/:alias', [FilesController, 'resolveFileAlias'])
       router.get('/list/:parentId', [FilesController, 'listFileEntries'])
       router.get('/get/:fileId', [FilesController, 'getFile'])
 
@@ -23,6 +22,9 @@ function fileRoutes(router: HttpRouterService) {
         router.get('/my-shares', [FilesController, 'listMyShares'])
         router.delete('/share/:shareId', [FilesController, 'deleteShare'])
       }).use(middleware.auth())
+
+      // Move greedy route to the end
+      router.get('/:alias', [FilesController, 'resolveFileAlias'])
     })
     .prefix('/file')
 }

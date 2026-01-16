@@ -20,6 +20,11 @@ class UUIDEncoder {
    * @returns The original, standard-formatted UUID string.
    */
   public decode(encodedUuid: string): string {
+    // 0. If it looks like a standard UUID already, just return it.
+    if (encodedUuid.includes('-') && encodedUuid.length >= 32) {
+      return encodedUuid;
+    }
+
     // 1. Convert the base-36 string back to a BigInt.
     // JavaScript's BigInt does not have a built-in parser for arbitrary bases,
     // so we perform the conversion manually.
