@@ -48,8 +48,10 @@ class FileService {
     if (userId) {
       query.where('owner_id', userId)
     } else {
-      // only view public files.
-      query.where('is_private', false).orWhereNull('is_private')
+      // only view public files - properly group the OR condition
+      query.andWhere((q) => {
+        q.where('is_private', false).orWhereNull('is_private')
+      })
     }
 
     return query.orderBy('is_folder', 'desc').orderBy('name', 'asc').paginate(page, perPage)
@@ -212,6 +214,48 @@ class FileService {
     file.save = async () => { throw new Error('Thou shalt not save!') };
     return file
 
+  }
+
+  /**
+   * Gets the breadcrumb trail for a folder.
+   * Returns an array from root to the current folder.
+   */
+  async getBreadcrumbs(
+    folderId: string,
+    userId: string
+  ): Promise<{ id: string | null; name: string }[]> {
+    const breadcrumbs: { id: string | null; name: string }[] = []
+    let currentId: string | null = folderId
+    let depth = 0
+
+    while (currentId && depth < 50) {
+      const folder = await FileItem.query()
+        .where('id', currentId)
+        .andWhere('owner_id', userId)
+        .first()
+
+      if (!folder) break
+
+      breadcrumbs.unshift({ id: folder.id, name: folder.name })
+      currentId = folder.parentFolder
+      depth++
+    }
+
+    // Add root at the beginning
+    breadcrumbs.unshift({ id: null, name: 'My Files' })
+
+    return breadcrumbs
+  }
+
+  /**
+   * Gets a folder by ID and verifies ownership.
+   */
+  async getFolder(folderId: string, userId: string): Promise<FileItem | null> {
+    return FileItem.query()
+      .where('id', folderId)
+      .andWhere('owner_id', userId)
+      .andWhere('is_folder', true)
+      .first()
   }
 }
 

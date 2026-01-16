@@ -16,9 +16,11 @@ function fileRoutes(router: HttpRouterService) {
       // Authenticated routes
       router.group(() => {
         router.get('/my-root', [FilesController, 'listMyRoot'])
+        router.get('/breadcrumbs/:folderId', [FilesController, 'getBreadcrumbs'])
         router.post('/mkdir', [FilesController, 'mkdir'])
         router.post('/move', [FilesController, 'moveFile'])
         router.post('/share', [FilesController, 'createShare'])
+        router.post('/share-file', [FilesController, 'createFileShare'])
         router.get('/my-shares', [FilesController, 'listMyShares'])
         router.delete('/share/:shareId', [FilesController, 'deleteShare'])
       }).use(middleware.auth())

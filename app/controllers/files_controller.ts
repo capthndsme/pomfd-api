@@ -269,4 +269,72 @@ export default class FilesController {
       return response.internalServerError(createFailure('Failed to delete share'))
     }
   }
+
+  // Get breadcrumbs for a folder
+  async getBreadcrumbs({ request, response, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    const { folderId } = request.params()
+
+    if (!folderId) {
+      return response.badRequest(createFailure('Folder ID is required', 'einval'))
+    }
+
+    try {
+      const breadcrumbs = await FileService.getBreadcrumbs(folderId, user.id)
+      return response.ok(createSuccess(breadcrumbs, 'Breadcrumbs retrieved', 'success'))
+    } catch (error) {
+      return response.internalServerError(createFailure('Failed to retrieve breadcrumbs'))
+    }
+  }
+
+  // Create file share (for individual files)
+  async createFileShare({ request, response, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    const { fileId, expiresIn } = request.body()
+
+    if (!fileId) {
+      return response.badRequest(createFailure('File ID is required', 'einval'))
+    }
+
+    try {
+      const file = await FileService.getFile(fileId, user.id)
+      if (!file) {
+        return response.notFound(createFailure('File not found', 'not-found'))
+      }
+
+      // For private files, generate a presigned URL
+      if (file.isPrivate) {
+        await file.load('serverShard')
+        const expirationSeconds = expiresIn || 3600 * 24 // Default 24 hours
+        const presignedUrl = FileService.generatePresignedUrl(file, expirationSeconds)
+        return response.ok(createSuccess({
+          url: presignedUrl,
+          expiresIn: expirationSeconds,
+          fileName: file.originalFileName || file.name,
+        }, 'Share URL generated', 'success'))
+      } else {
+        // For public files, just return the direct URL
+        await file.load('serverShard')
+        const directUrl = `${file.serverShard.domain}/${file.fileKey}`
+        return response.ok(createSuccess({
+          url: directUrl,
+          expiresIn: null,
+          fileName: file.originalFileName || file.name,
+        }, 'Share URL generated', 'success'))
+      }
+    } catch (error) {
+      if (error instanceof NamedError) {
+        return response.notFound(createFailure(error.message, error.name))
+      }
+      return response.internalServerError(createFailure('Failed to create file share'))
+    }
+  }
 }

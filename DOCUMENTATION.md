@@ -123,7 +123,323 @@ All services use dotenv. Below are critical environment variables.
     *   Watch Transcoder logs picking up the job.
     *   Watch artifacts appearing in Storage Node.
 
-## 6. Future Roadmap (Inferred)
-*   Deployments via `ace` command (mentioned in README).
-*   Preview system expansion.
-*   Advanced Server Selection algorithms (Lat/Lon).
+## 6. Upload Flows & File Ownership
+
+### Upload Endpoints Overview
+
+The Storage Node (`cap-cloud-serve`) exposes two distinct upload endpoints:
+
+| Endpoint | Authentication | Sets Owner | Use Case |
+|----------|---------------|------------|----------|
+| `/anon-upload` | None required | No (`ownerId = null`) | Anonymous/public uploads |
+| `/upload` | `Authorization` + `X-User-Id` headers | Yes (`ownerId = userId`) | User-owned uploads |
+
+### 6.1 Anonymous Upload Flow
+
+```
+Frontend                    Storage Node                  Coordinator
+   |                             |                             |
+   |-- POST /anon-upload ------->|                             |
+   |   (multipart/form-data)     |                             |
+   |                             |-- POST /coordinator/v1/ack ->|
+   |                             |   (file metadata)            |
+   |                             |<-- 200 OK (FileItem) --------|
+   |<-- 200 OK (FileItem[]) -----|                             |
+```
+
+**Characteristics:**
+- No authentication required
+- File is stored in the `public` bucket
+- `ownerId` is `null` - file belongs to no one
+- File will NOT appear in any user's "My Files"
+- Anyone with the link can access the file
+
+### 6.2 Authenticated Upload Flow
+
+```
+Frontend                    Storage Node                  Coordinator
+   |                             |                             |
+   |-- POST /upload ------------>|                             |
+   |   Headers:                  |                             |
+   |   - Authorization: Bearer   |                             |
+   |   - X-User-Id: <userId>     |                             |
+   |   (multipart/form-data)     |                             |
+   |                             |-- Validate token via ------->|
+   |                             |   /auth/verify-user-token    |
+   |                             |<-- Token valid --------------|
+   |                             |                             |
+   |                             |-- POST /coordinator/v1/ack ->|
+   |                             |   (file + ownerId)           |
+   |                             |<-- 200 OK (FileItem) --------|
+   |<-- 200 OK (FileItem[]) -----|                             |
+```
+
+**Characteristics:**
+- Requires `Authorization: Bearer <token>` header
+- Requires `X-User-Id: <userId>` header
+- Storage Node validates token with Coordinator before accepting
+- `ownerId` is set to the authenticated user
+- File appears in the user's "My Files"
+
+### 6.3 File Visibility Model
+
+Files have two orthogonal properties:
+
+| Property | Values | Effect |
+|----------|--------|--------|
+| `ownerId` | `null` or UUID | Determines if file appears in a user's "My Files" |
+| `isPrivate` | `true` / `false` | Determines who can access the file |
+
+**Visibility Matrix:**
+
+| ownerId | isPrivate | Appears in "My Files" | Who Can Access |
+|---------|-----------|----------------------|----------------|
+| `null` | `false` | No one | Anyone with link |
+| `userId` | `false` | Owner only | Anyone with link |
+| `userId` | `true` | Owner only | Owner only |
+| `null` | `true` | ❌ Invalid state | N/A |
+
+### 6.4 "Save to History" Feature
+
+The frontend's landing page offers a "Save to history" toggle for logged-in users:
+
+- **OFF**: Uses `/anon-upload` → File is public, NOT in user's files
+- **ON**: Uses `/upload` → File is public AND in user's "My Files"
+
+This allows users to optionally keep track of their uploads without making them private.
+
+---
+
+## 7. Authentication & Headers
+
+### 7.1 User Authentication (Frontend → Storage Node)
+
+For authenticated uploads, the frontend must send:
+
+```http
+POST /upload HTTP/1.1
+Host: storage-node.example.com
+Authorization: Bearer <jwt_token>
+X-User-Id: <user_uuid>
+Content-Type: multipart/form-data
+```
+
+**⚠️ Common Gotcha:** Both headers are required! The middleware checks:
+```typescript
+if (!userId || !token) {
+  throw new NamedError('Invalid API Key', 'server-key-not-found')
+}
+```
+
+Missing the `X-User-Id` header (even with a valid token) will fail with `server-key-not-found`.
+
+### 7.2 Server-to-Server Authentication (Storage ↔ Coordinator)
+
+For internal communication:
+
+```http
+POST /coordinator/v1/ack HTTP/1.1
+Host: coordinator.example.com
+x-server-id: <server_shard_id>
+x-api-key: <server_api_key>
+```
+
+### 7.3 Token Validation Flow
+
+Storage Node validates user tokens by calling Coordinator:
+
+```typescript
+// Storage Node → Coordinator
+POST /auth/verify-user-token
+{
+  "userId": "<uuid>",
+  "token": "<jwt_token>"
+}
+```
+
+---
+
+## 8. Query Parameters for Uploads
+
+Both `/upload` and `/anon-upload` accept query parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `parentDirectoryId` | UUID | Target folder for the file |
+| `isPrivate` | `"true"` / `"false"` | Store in private bucket, restrict access |
+
+**Chunked Upload Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `uploadId` | string | Unique identifier for the chunked upload session |
+| `chunkIndex` | number | Zero-based index of current chunk |
+| `totalChunks` | number | Total number of chunks |
+| `fileName` | string | Original filename |
+| `fileSize` | number | Total file size in bytes |
+| `mimeType` | string | MIME type of the file |
+| `chunkHash` | string | SHA-256 hash of the chunk |
+| `fileHash` | string | SHA-256 hash of the entire file |
+| `chunkSize` | number | Size of this chunk in bytes |
+
+---
+
+## 9. Common Gotchas & Pitfalls
+
+### 9.1 SQL OR Condition Pitfall
+
+**Problem:** Careless use of `orWhere` in ORM queries can break other filters.
+
+❌ **Wrong:**
+```typescript
+query.where('parent_folder', parentId)
+     .where('is_private', false)
+     .orWhereNull('is_private')  // This OR applies globally!
+```
+This generates: `WHERE parent_folder = ? AND is_private = false OR is_private IS NULL`
+
+The `OR` breaks loose from the `AND` chain, returning all items where `is_private IS NULL` regardless of `parent_folder`.
+
+✅ **Correct:**
+```typescript
+query.where('parent_folder', parentId)
+     .andWhere((q) => {
+       q.where('is_private', false).orWhereNull('is_private')
+     })
+```
+This generates: `WHERE parent_folder = ? AND (is_private = false OR is_private IS NULL)`
+
+### 9.2 Axios Error Handling
+
+**Problem:** Axios throws errors for non-2xx responses, and the error message is buried.
+
+❌ **Wrong:**
+```typescript
+const response = await axios.post('/auth/login', data);
+if (!response.data.success) {
+  throw new Error(response.data.message);  // Never reached on 4xx/5xx!
+}
+```
+
+✅ **Correct:**
+```typescript
+try {
+  const response = await axios.post('/auth/login', data);
+  // Handle success
+} catch (error) {
+  if (error.response?.data?.message) {
+    throw new Error(error.response.data.message);  // Extract API error
+  }
+  throw error;
+}
+```
+
+### 9.3 Missing X-User-Id Header
+
+**Symptom:** Authenticated uploads fail with "Invalid API Key" or "server-key-not-found"
+
+**Cause:** The upload request is missing the `X-User-Id` header.
+
+**Fix:** Ensure both `Authorization` and `X-User-Id` headers are set:
+```typescript
+headers: {
+  Authorization: `Bearer ${token}`,
+  "X-User-Id": userId,  // Don't forget this!
+}
+```
+
+### 9.4 Private Bucket Path Mismatch
+
+**Problem:** Private files are stored in a different disk location than public files.
+
+```
+/storage/
+├── public/           # isPrivate = false
+│   └── <baseKey>/
+│       └── filename.ext
+└── private/          # isPrivate = true
+    └── <baseKey>/
+        └── filename.ext
+```
+
+**Gotcha:** If you change `isPrivate` after upload, the file doesn't move!
+
+### 9.5 Folder Navigation Returns Wrong Items
+
+**Symptom:** Navigating into a subfolder shows root-level items.
+
+**Cause:** Usually the SQL query issue described in 9.1, or the folder is empty.
+
+**Debug:** Check if items exist with the correct `parent_folder` value:
+```sql
+SELECT * FROM file_items WHERE parent_folder = '<folder_uuid>';
+```
+
+### 9.6 Chunked Upload Session Isolation
+
+**Problem:** Chunk files are stored in a temporary `_chunks_` directory.
+
+**Important:**
+- Upload IDs must be alphanumeric only (validated with regex)
+- Chunks are named `<index>.chunk`
+- After assembly, chunks are deleted
+- If assembly fails, orphan chunks may remain
+
+### 9.7 Token vs userId Confusion
+
+**Distinction:**
+- `token`: JWT access token (opaque string)
+- `userId`: UUID of the user (stored in database)
+
+The frontend must pass **both** for authenticated uploads. They serve different purposes:
+- `token`: Proves the request is from an authenticated session
+- `userId`: Identifies WHO the file should belong to
+
+---
+
+## 10. Frontend Integration Patterns
+
+### 10.1 Determining Upload Endpoint
+
+```typescript
+// Use authenticated endpoint only when saveToHistory is true AND user is logged in
+const useAuthenticatedUpload = saveToHistory && token;
+const endpoint = useAuthenticatedUpload ? "upload" : "anon-upload";
+const server = `//${serverDomain}/${endpoint}`;
+```
+
+### 10.2 Upload Options Interface
+
+```typescript
+interface UploadOptions {
+  chunkSize?: number;           // Bytes per chunk (default: 5MB)
+  maxConcurrency?: number;      // Parallel chunk uploads (default: 16)
+  useChunkedUpload?: boolean;   // Force chunked upload
+  chunkThreshold?: number;      // Auto-chunk files larger than this (default: 8MB)
+  folderId?: string | null;     // Target folder UUID
+  isPrivate?: boolean;          // Store in private bucket
+  saveToHistory?: boolean;      // Use authenticated upload (adds to user's files)
+}
+```
+
+### 10.3 Recommended Chunk Sizes by File Size
+
+| File Size | Chunk Size | Concurrency |
+|-----------|------------|-------------|
+| < 25 MB | 1.25 MB | 4 |
+| 25-50 MB | 3 MB | 8 |
+| 50-100 MB | 6 MB | 10 |
+| 100-500 MB | 8 MB | 12 |
+| > 500 MB | 20 MB | 16 |
+
+---
+
+## 11. Future Roadmap
+
+- Deployments via `ace` command (mentioned in README)
+- Preview system expansion
+- Advanced Server Selection algorithms (Lat/Lon based)
+- File deduplication via hash comparison
+- Resumable uploads (persist chunk state)
+- Quota management per user
+- File expiration policies
