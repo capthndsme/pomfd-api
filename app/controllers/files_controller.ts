@@ -323,7 +323,9 @@ export default class FilesController {
       } else {
         // For public files, just return the direct URL
         await file.load('serverShard')
-        const directUrl = `${file.serverShard.domain}/${file.fileKey}`
+        const directUrl = file.fileKey
+          ? FileService.buildPublicUrl(file.serverShard.domain, file.fileKey)
+          : ''
         return response.ok(createSuccess({
           url: directUrl,
           expiresIn: null,
@@ -335,6 +337,81 @@ export default class FilesController {
         return response.notFound(createFailure(error.message, error.name))
       }
       return response.internalServerError(createFailure('Failed to create file share'))
+    }
+  }
+
+  /**
+   * Dedicated viewer endpoint for authenticated users.
+   * Returns public direct URLs for public files, and presigned URLs for private files.
+   *
+   * This avoids conflating "viewing" with "sharing" and keeps the frontend clean.
+   */
+  async getFileViewUrls({ request, response, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    const { fileId, expiresIn } = request.body() as { fileId?: string; expiresIn?: number }
+    if (!fileId) {
+      return response.badRequest(createFailure('File ID is required', 'einval'))
+    }
+
+    try {
+      const file = await FileService.getFile(fileId, user.id)
+      if (!file) {
+        return response.notFound(createFailure('File not found', 'not-found'))
+      }
+
+      await file.load('serverShard')
+      await file.load('previews')
+
+      const expirationSeconds = expiresIn || 3600 // Default 1 hour for private URLs
+      const isPrivate = !!file.isPrivate
+
+      const originalUrl =
+        isPrivate && file.fileKey && file.serverShard?.apiKey
+          ? FileService.generatePresignedUrlForPath(file.fileKey, file.serverShard.apiKey, file.serverShard.domain, expirationSeconds)
+          : file.fileKey && file.serverShard
+            ? FileService.buildPublicUrl(file.serverShard.domain, file.fileKey)
+            : ''
+
+      const thumbnailUrl =
+        file.previewKey && file.serverShard
+          ? (isPrivate && file.serverShard.apiKey
+            ? FileService.generatePresignedUrlForPath(file.previewKey, file.serverShard.apiKey, file.serverShard.domain, expirationSeconds)
+            : FileService.buildPublicUrl(file.serverShard.domain, file.previewKey))
+          : ''
+
+      const previews = (file.previews || []).map((p) => ({
+        id: p.id,
+        quality: p.quality,
+        mimeType: p.mimeType,
+        url:
+          isPrivate && file.serverShard?.apiKey
+            ? FileService.generatePresignedUrlForPath(p.previewKey, file.serverShard.apiKey, file.serverShard.domain, expirationSeconds)
+            : FileService.buildPublicUrl(file.serverShard.domain, p.previewKey),
+      }))
+
+      return response.ok(
+        createSuccess(
+          {
+            fileId: file.id,
+            isPrivate,
+            expiresIn: isPrivate ? expirationSeconds : null,
+            originalUrl,
+            thumbnailUrl,
+            previews,
+          },
+          'View URLs generated',
+          'success'
+        )
+      )
+    } catch (error) {
+      if (error instanceof NamedError) {
+        return response.notFound(createFailure(error.message, error.name))
+      }
+      return response.internalServerError(createFailure('Failed to generate view URLs'))
     }
   }
 }

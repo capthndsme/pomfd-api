@@ -5,12 +5,61 @@ import UUIDService from './UUIDService.js'
 
 class FileService {
   /**
+   * Normalize a server "domain" (which may be stored as a hostname) into a full origin.
+   * - Ensures protocol exists (defaults to https://)
+   * - Strips trailing slashes
+   */
+  normalizeServerOrigin(domain: string | null | undefined): string {
+    if (!domain) return ''
+    const trimmed = domain.trim().replace(/\/+$/, '')
+    if (/^https?:\/\//i.test(trimmed)) return trimmed
+    return `https://${trimmed}`
+  }
+
+  /**
+   * Builds a public, direct URL for a path on a server shard.
+   */
+  buildPublicUrl(serverDomain: string, filePath: string): string {
+    const origin = this.normalizeServerOrigin(serverDomain)
+    if (!origin || !filePath) return ''
+    return `${origin}/${filePath}`
+  }
+
+  /**
+   * Generates a presigned URL for a given file path on a server shard.
+   * @param filePath The path to the file relative to the shard's root (e.g. "key/file.ext")
+   * @param serverKey The shard secret used for HMAC signing
+   * @param serverDomain The shard domain/origin
+   * @param expiresIn Seconds until the URL expires.
+   */
+  generatePresignedUrlForPath(
+    filePath: string,
+    serverKey: string,
+    serverDomain: string,
+    expiresIn: number
+  ): string {
+    const origin = this.normalizeServerOrigin(serverDomain)
+    if (!origin || !filePath || !serverKey) return ''
+
+    const expires = Date.now() + expiresIn * 1000 // expires timestamp in milliseconds
+    const signature = this.#createSignature(filePath, serverKey, expires)
+    return `${origin}/p/${filePath}?signature=${signature}&expires=${expires}`
+  }
+
+  /**
    * This resolves FileShort to File
    * Authentication optional.
    */
   async resolveFileAlias(alias: string, userId: string | null = null): Promise<FileItem> {
-    const uuid = UUIDService.decode(alias)
-    const file = await FileItem.findBy('id', uuid)
+    // Support multiple alias styles:
+    // - raw UUID (standard)
+    // - base36-encoded UUID (short link)
+    // - legacy/non-UUID ids (e.g. cuid-style) if they were ever stored as the primary id
+    let file = await FileItem.findBy('id', alias)
+    if (!file) {
+      const uuid = UUIDService.decode(alias)
+      file = await FileItem.findBy('id', uuid)
+    }
     if (!file) throw new NamedError('File not found', 'not-found')
 
     if (file.isPrivate) {
@@ -155,8 +204,6 @@ class FileService {
  * @returns The full, shareable presigned URL.
  */
   generatePresignedUrl(file: FileItem, expiresIn: number): string {
-    const expires = Date.now() + expiresIn * 1000 // expires timestamp in milliseconds
-
     // Ensure serverShard is loaded and has the necessary data
     if (!file.serverShard) {
       console.warn(`Cannot generate presigned URL: serverShard not loaded for file ${file.id}`)
@@ -164,20 +211,14 @@ class FileService {
     }
 
     if (!file.fileKey || !file.serverShard.apiKey) return ''
-
-    const signature = this.#createSignature(file.fileKey, file.serverShard.apiKey, expires)
-
-    // Construct the URL safely. The base URL should not have a trailing slash.
-    return `${file.serverShard.domain}/p/${file.fileKey}?signature=${signature}&expires=${expires}`
+    return this.generatePresignedUrlForPath(file.fileKey, file.serverShard.apiKey, file.serverShard.domain, expiresIn)
   }
 
   presignPreviews(file: FileItem) {
     const previews = file.previews
     if (!previews) return []
     return previews.map((preview) => {
-      const expires = Date.now() + 3600 * 1000 // 1 hour expiration
-      const signature = this.#createSignature(preview.previewKey, file.serverShard.apiKey, expires)
-      return `${file.serverShard.domain}/p/${preview.previewKey}?signature=${signature}&expires=${expires}`
+      return this.generatePresignedUrlForPath(preview.previewKey, file.serverShard.apiKey, file.serverShard.domain, 3600)
     })
   }
 
@@ -185,9 +226,12 @@ class FileService {
     const previews = file.previews
     if (!previews) return file
     file.previews = previews.map((preview) => {
-      const expires = Date.now() + 3600 * 1000 // 1 hour expiration
-      const signature = this.#createSignature(preview.previewKey, file.serverShard.apiKey, expires)
-      preview.previewKey = `${file.serverShard.domain}/p/${preview.previewKey}?signature=${signature}&expires=${expires}`
+      preview.previewKey = this.generatePresignedUrlForPath(
+        preview.previewKey,
+        file.serverShard.apiKey,
+        file.serverShard.domain,
+        3600
+      )
       return preview
     }) as typeof file.previews
     return file
