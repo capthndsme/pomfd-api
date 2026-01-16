@@ -434,7 +434,199 @@ interface UploadOptions {
 
 ---
 
-## 11. Future Roadmap
+## 11. Social Media Embeds
+
+The Coordinator provides endpoints for generating rich social media previews when sharing file links on Discord, Slack, Reddit, Facebook, Messenger, Twitter, and other platforms.
+
+### 11.1 Embed Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/embed/:alias` | GET | Returns HTML with Open Graph & Twitter Card meta tags |
+| `/oembed` | GET | Returns oEmbed JSON for platforms that support it |
+
+### 11.2 Open Graph Meta Tags (Discord, Facebook, LinkedIn, etc.)
+
+When a link to `/embed/:alias` is shared, the endpoint returns an HTML page with proper Open Graph tags that enable rich previews:
+
+**For Videos:**
+```html
+<meta property="og:type" content="video.other">
+<meta property="og:video" content="https://storage.example.com/file.mp4">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1920">
+<meta property="og:video:height" content="1080">
+<meta property="og:image" content="https://storage.example.com/thumbnail.jpg">
+```
+
+**For Images:**
+```html
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://storage.example.com/image.jpg">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1080">
+```
+
+**For Audio:**
+```html
+<meta property="og:type" content="music.song">
+<meta property="og:audio" content="https://storage.example.com/audio.mp3">
+<meta property="og:image" content="https://storage.example.com/thumbnail.jpg">
+```
+
+### 11.3 Twitter Card Meta Tags
+
+Twitter Cards are included for Twitter/X and other platforms that use them:
+
+```html
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="filename.mp4">
+<meta name="twitter:description" content="View this video on Pomf">
+<meta name="twitter:image" content="https://storage.example.com/thumbnail.jpg">
+```
+
+### 11.4 Discord Video Embeds
+
+Discord supports inline video playback when sharing links. For this to work:
+
+1. The page must have `og:type="video.other"`
+2. The `og:video` tag must point directly to the video file (not a player page)
+3. The video must be in a supported format (MP4 with H.264 is best)
+4. The video file must be directly accessible (not behind auth)
+
+**Important:** Private files require presigned URLs for Discord embeds to work.
+
+### 11.5 oEmbed Endpoint
+
+The `/oembed` endpoint implements the [oEmbed 1.0 specification](https://oembed.com/) for platforms like Slack and Notion:
+
+**Request:**
+```
+GET /oembed?url=https://pomf.lol/s/abc123&format=json&maxwidth=800
+```
+
+**Response (Video):**
+```json
+{
+  "version": "1.0",
+  "type": "video",
+  "provider_name": "Pomf",
+  "provider_url": "https://pomf.lol",
+  "title": "my-video.mp4",
+  "width": 1920,
+  "height": 1080,
+  "html": "<video width=\"1920\" height=\"1080\" controls>...</video>",
+  "thumbnail_url": "https://storage.example.com/thumbnail.jpg",
+  "thumbnail_width": 1920,
+  "thumbnail_height": 1080
+}
+```
+
+**Response Types:**
+- `video`: For video files
+- `photo`: For images (returns URL instead of HTML)
+- `rich`: For audio files
+- `link`: For other file types
+
+### 11.6 Apache Crawler Redirect Configuration
+
+The frontend uses Apache `.htaccess` rules to detect social media crawlers and redirect them to the embed API. This allows:
+- **Crawlers** → See the embed API with Open Graph meta tags
+- **Normal users** → See the React SPA
+
+**Location:** `pomf-fe/public/.htaccess` (copied to `dist/` on build)
+
+#### How It Works
+
+1. When a URL like `https://share.example.com/s/abc123` is shared on Discord
+2. Discord's crawler (`Discordbot`) requests the URL
+3. Apache detects the crawler User-Agent
+4. Apache redirects to `https://api.example.com/embed/abc123`
+5. The embed API returns HTML with Open Graph meta tags
+6. Discord displays a rich embed with thumbnail/video
+
+#### Supported Platforms
+
+The `.htaccess` detects crawlers from the following platforms:
+
+| Platform | User-Agent Pattern |
+|----------|-------------------|
+| **Discord** | `Discordbot`, `Discord` |
+| **Facebook/Meta** | `facebookexternalhit`, `Facebot`, `facebookcatalog` |
+| **WhatsApp** | `WhatsApp` |
+| **Twitter/X** | `Twitterbot` |
+| **Slack** | `Slackbot`, `Slack-ImgProxy` |
+| **LinkedIn** | `LinkedInBot` |
+| **Telegram** | `TelegramBot` |
+| **Reddit** | `redditbot` |
+| **Skype** | `SkypeUriPreview` |
+| **Microsoft Teams** | `MicrosoftPreview`, `Microsoft-WebPreview` |
+| **Pinterest** | `Pinterest`, `Pinterestbot` |
+| **Tumblr** | `Tumblr` |
+| **Line** | `Line` |
+| **Viber** | `Viber` |
+| **Snapchat** | `Snapchat` |
+| **Signal** | `Signal` |
+| **Mastodon/Fediverse** | `Mastodon`, `Pleroma`, `Misskey`, `Akkoma`, `ActivityPub` |
+| **Google Chat** | `Google-Chat`, `Google.*snippet` |
+| **KakaoTalk** | `kakaotalk-scrap`, `KakaoTalkBot` |
+| **VK** | `vkShare` |
+| **Weibo** | `Weibo` |
+| **WeChat/QQ** | `MicroMessenger`, `QQ`, `Qzone` |
+| **Notion** | `Notion` |
+| **Embedly** | `Embedly` |
+| **Iframely** | `Iframely` |
+
+#### Key Rewrite Rules
+
+```apache
+# Redirect crawlers hitting /s/:alias to embed API
+RewriteRule ^s/([a-zA-Z0-9_-]+)$ https://share-apis.capthnds.me/embed/$1 [R=302,L]
+
+# Redirect oEmbed requests
+RewriteRule ^oembed$ https://share-apis.capthnds.me/oembed [R=302,QSA,L]
+```
+
+#### Testing Crawler Detection
+
+You can test with curl:
+
+```bash
+# Simulate Discord crawler
+curl -H "User-Agent: Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)" \
+  https://share.capthnds.me/s/abc123
+
+# Should redirect to: https://share-apis.capthnds.me/embed/abc123
+```
+
+### 11.7 Integration with Frontend
+
+Normal users see the React SPA. The share page (`/s/:alias`) is handled by React Router:
+
+```typescript
+// In App.tsx - React handles the route
+<Route path="/s/:alias" element={<ShareLink />} />
+
+// ShareLink.tsx fetches file data from API
+const { data: file } = useResolveLinkToFile(alias);
+```
+
+For programmatic sharing, generate the direct share URL:
+
+```typescript
+// The share URL is the same - Apache handles crawler vs user detection
+const getShareUrl = (fileAlias: string): string => {
+  return `https://share.capthnds.me/s/${fileAlias}`;
+};
+```
+
+### 11.8 Caching
+
+Embed responses are cached for 1 hour (`Cache-Control: public, max-age=3600`) to reduce server load and improve embed preview speed on social platforms.
+
+---
+
+## 12. Future Roadmap
 
 - Deployments via `ace` command (mentioned in README)
 - Preview system expansion

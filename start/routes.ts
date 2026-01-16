@@ -12,6 +12,7 @@ import { authRoutes } from '../app/routes/authRoutes.js'
 import { uploaderRoutes } from '../app/routes/uploaderRoutes.js';
 import { serverCommunicationRoutes } from '../app/routes/serverCommunicationRoutes.js';
 import { fileRoutes } from '../app/routes/fileRoutes.js';
+import { embedRoutes } from '../app/routes/embedRoutes.js';
 
 router.get('/', async () => {
   return {
@@ -52,5 +53,6 @@ authRoutes(router);
 uploaderRoutes(router);
 serverCommunicationRoutes(router)
 fileRoutes(router);
+embedRoutes(router);
 
 export default router
