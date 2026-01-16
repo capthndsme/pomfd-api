@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon'
-import { BaseModel, beforeCreate, belongsTo, column, hasMany } from '@adonisjs/lucid/orm'
+import { BaseModel, beforeCreate, beforeSave, belongsTo, column, hasMany } from '@adonisjs/lucid/orm'
 import { type FileType } from '../../shared/types/FileType.js'
 import { type BelongsTo, type HasMany } from '@adonisjs/lucid/types/relations'
 import User from './user.js'
@@ -14,6 +14,15 @@ export default class FileItem extends BaseModel {
   @beforeCreate()
   static async generateUuid(fileItem: FileItem) {
     fileItem.id = randomUUID()
+  }
+
+  @beforeSave()
+  static async preventSelfReference(fileItem: FileItem) {
+    if (fileItem.id && fileItem.parentFolder === fileItem.id) {
+      // In case of a self-reference, we force it to be null (root) or throw error?
+      // Throwing error is safer to detect bugs.
+      throw new Error('Self-referencing folder detected. A folder cannot be its own parent.')
+    }
   }
 
   @column.dateTime({ autoCreate: true })
@@ -124,5 +133,5 @@ export default class FileItem extends BaseModel {
     localKey: 'id',
   })
   declare previews: HasMany<typeof FilePreview>
-  
+
 }
