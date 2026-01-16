@@ -1,6 +1,9 @@
 import FileService from '#services/FileService'
 import type { HttpContext } from '@adonisjs/core/http'
 import { createFailure } from '../../shared/types/ApiBase.js'
+import FileShareTokenService from '#services/FileShareTokenService'
+import FileShareService from '#services/FileShareService'
+import env from '#start/env'
 
 /**
  * oEmbed Controller for providing structured embed data
@@ -34,7 +37,25 @@ export default class OEmbedController {
             }
 
             // Resolve the file (anonymous access only for oEmbed)
-            const file = await FileService.resolveFileAlias(alias, null)
+            // Supported:
+            // - DB-backed share IDs (UUID)
+            // - Legacy token-based private share ids (contain '.')
+            // - Public file aliases (UUID/CUID/base36)
+            const file = await (async () => {
+                try {
+                    const { file: sharedFile } = await FileShareService.getShare(alias)
+                    await sharedFile.load('serverShard')
+                    return sharedFile
+                } catch {
+                    if (alias.includes('.')) {
+                        const payload = FileShareTokenService.verify(alias)
+                        const f = await FileService.getFile(payload.fileId, null)
+                        await f.load('serverShard')
+                        return f
+                    }
+                    return await FileService.resolveFileAlias(alias, null)
+                }
+            })()
 
             if (!file) {
                 return response.notFound(createFailure('File not found', 'not-found'))
@@ -114,7 +135,7 @@ export default class OEmbedController {
         const base = {
             version: '1.0',
             provider_name: this.siteName,
-            provider_url: 'https://share.capthnds.me',
+            provider_url: env.get('COORDINATOR_UI'),
             cache_age: 3600,
         }
 

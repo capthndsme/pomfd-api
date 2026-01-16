@@ -1,6 +1,7 @@
 import FileService from '#services/FileService'
 import FolderShareService from '#services/FolderShareService'
 import FileShareTokenService from '#services/FileShareTokenService'
+import FileShareService from '#services/FileShareService'
 import UUIDService from '#services/UUIDService'
 import type { HttpContext } from '@adonisjs/core/http'
 import { createFailure, createSuccess } from '../../shared/types/ApiBase.js'
@@ -253,6 +254,44 @@ export default class FilesController {
     }
   }
 
+  // List user's file shares (for management/revocation)
+  async listMyFileShares({ response, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    try {
+      const shares = await FileShareService.listUserShares(user.id)
+      return response.ok(createSuccess(shares, 'File shares retrieved', 'success'))
+    } catch (error) {
+      return response.internalServerError(createFailure('Failed to retrieve file shares'))
+    }
+  }
+
+  // Delete (revoke) a file share
+  async deleteFileShare({ request, response, auth }: HttpContext) {
+    const user = auth.user
+    if (!user) {
+      return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
+    }
+
+    const { shareId } = request.params()
+    if (!shareId) {
+      return response.badRequest(createFailure('Share ID is required', 'einval'))
+    }
+
+    try {
+      await FileShareService.deleteShare(shareId, user.id)
+      return response.ok(createSuccess(null, 'Share deleted', 'success'))
+    } catch (error) {
+      if (error instanceof NamedError) {
+        return response.notFound(createFailure(error.message, error.name))
+      }
+      return response.internalServerError(createFailure('Failed to delete share'))
+    }
+  }
+
   // Delete a share
   async deleteShare({ request, response, auth }: HttpContext) {
     const user = auth.user
@@ -301,7 +340,7 @@ export default class FilesController {
       return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
     }
 
-    const { fileId, expiresIn } = request.body()
+    const { fileId, expiresIn } = request.body() as { fileId?: string; expiresIn?: number | null }
 
     if (!fileId) {
       return response.badRequest(createFailure('File ID is required', 'einval'))
@@ -317,40 +356,41 @@ export default class FilesController {
 
       const uiBase = env.get('COORDINATOR_UI') || ''
 
-      // Canonical share surface URL:
-      // - Public files: /s/:encodedFileId
-      // - Private files: /s/:shareToken (token contains expiry)
-      const publicShareId = UUIDService.encode(file.id)
+      // expiresIn:
+      // - undefined => default 24h share link
+      // - null => never-expiring share link
+      // - number => that duration
+      const shareExpiresIn = expiresIn === undefined ? 3600 * 24 : expiresIn
+      const expiresAt =
+        typeof shareExpiresIn === 'number' ? new Date(Date.now() + shareExpiresIn * 1000) : null
 
-      // For private files, generate a stable share surface + an optional expiring direct URL
-      if (file.isPrivate) {
-        const expirationSeconds = expiresIn || 3600 * 24 // Default 24 hours
-        const shareId = FileShareTokenService.create(file.id, expirationSeconds)
-        const shareUrl = uiBase ? `${uiBase.replace(/\/+$/, '')}/s/${shareId}` : `/s/${shareId}`
+      // DB-backed share record (revocable) for both public + private files
+      const share = await FileShareService.createShare({
+        fileId: file.id,
+        ownerId: user.id,
+        expiresAt,
+      })
 
-        const presignedUrl = FileService.generatePresignedUrl(file, expirationSeconds)
-        return response.ok(createSuccess({
-          // Backwards compat: "url" now means the share surface URL
-          url: shareUrl,
-          shareUrl,
-          directUrl: presignedUrl,
-          expiresIn: expirationSeconds,
-          fileName: file.originalFileName || file.name,
-        }, 'Share URL generated', 'success'))
-      } else {
-        // For public files, return both share surface + direct URL
-        const shareUrl = uiBase ? `${uiBase.replace(/\/+$/, '')}/s/${publicShareId}` : `/s/${publicShareId}`
-        const directUrl = file.fileKey
-          ? FileService.buildPublicUrl(file.serverShard.domain, file.fileKey)
-          : ''
-        return response.ok(createSuccess({
-          url: shareUrl,
-          shareUrl,
-          directUrl,
-          expiresIn: null,
-          fileName: file.originalFileName || file.name,
-        }, 'Share URL generated', 'success'))
-      }
+      const shareUrl = uiBase ? `${uiBase.replace(/\/+$/, '')}/s/${share.id}` : `/s/${share.id}`
+
+      // Direct link:
+      // - Private: expiring presigned URL (always expires)
+      // - Public: stable direct URL
+      const directExpiresIn = file.isPrivate ? (typeof shareExpiresIn === 'number' ? shareExpiresIn : 3600) : null
+      const directUrl = file.isPrivate
+        ? FileService.generatePresignedUrl(file, directExpiresIn || 3600)
+        : (file.fileKey ? FileService.buildPublicUrl(file.serverShard.domain, file.fileKey) : '')
+
+      return response.ok(createSuccess({
+        // Backwards compat: "url" means the share surface URL
+        url: shareUrl,
+        shareUrl,
+        shareId: share.id,
+        shareExpiresIn,
+        directUrl,
+        directExpiresIn,
+        fileName: file.originalFileName || file.name,
+      }, 'Share URL generated', 'success'))
     } catch (error) {
       if (error instanceof NamedError) {
         return response.notFound(createFailure(error.message, error.name))
@@ -360,8 +400,10 @@ export default class FilesController {
   }
 
   /**
-   * Public, token-based file share resolution.
-   * This powers the canonical /s/:id share surface for PRIVATE files without requiring auth.
+   * Public file-share resolution.
+   * Supports:
+   * - DB-backed share IDs (revocable, optional expiry)
+   * - Legacy token-based share ids (contain '.')
    */
   async getFileShare({ request, response }: HttpContext) {
     const { shareId } = request.params()
@@ -370,8 +412,21 @@ export default class FilesController {
     }
 
     try {
-      const payload = FileShareTokenService.verify(shareId)
-      const file = await FileService.getFile(payload.fileId)
+      // Legacy token support (payload.signature)
+      let fileId: string
+      let shareExpiresAtMs: number | null = null
+
+      if (shareId.includes('.')) {
+        const payload = FileShareTokenService.verify(shareId)
+        fileId = payload.fileId
+        shareExpiresAtMs = payload.exp ?? null
+      } else {
+        const { share, file } = await FileShareService.getShare(shareId)
+        fileId = file.id
+        shareExpiresAtMs = share.expiresAt ? share.expiresAt.toMillis() : null
+      }
+
+      const file = await FileService.getFile(fileId)
       if (!file) {
         return response.notFound(createFailure('File not found', 'not-found'))
       }
@@ -384,7 +439,13 @@ export default class FilesController {
       await file.load('serverShard')
       await file.load('previews')
 
-      const expirationSeconds = payload.exp ? Math.max(1, Math.floor((payload.exp - Date.now()) / 1000)) : 3600
+      // Presigned view URL TTL:
+      // - Never exceed share expiry (if any)
+      // - Default to 1h windows for private URLs
+      const secondsUntilShareExpiry = shareExpiresAtMs ? Math.floor((shareExpiresAtMs - Date.now()) / 1000) : null
+      const expirationSeconds = secondsUntilShareExpiry !== null
+        ? Math.max(1, Math.min(3600, secondsUntilShareExpiry))
+        : 3600
       const isPrivate = !!file.isPrivate
 
       // Generate view URLs for anonymous viewing. Private files must be presigned.

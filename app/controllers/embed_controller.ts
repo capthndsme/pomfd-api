@@ -1,6 +1,8 @@
 import FileService from '#services/FileService'
 import type { HttpContext } from '@adonisjs/core/http'
 import type FileItem from '#models/file_item'
+import FileShareTokenService from '#services/FileShareTokenService'
+import FileShareService from '#services/FileShareService'
 
 /**
  * EmbedController generates HTML pages with Open Graph and Twitter Card meta tags
@@ -32,8 +34,27 @@ export default class EmbedController {
                 }
             }
 
-            // Resolve the file
-            const file = await FileService.resolveFileAlias(alias, userId)
+            // Resolve the file.
+            // Supported:
+            // - DB-backed share IDs (UUID)
+            // - Legacy token-based private share ids (contain '.')
+            // - Public file aliases (UUID/CUID/base36)
+            let file: FileItem
+            try {
+                const { file: sharedFile } = await FileShareService.getShare(alias)
+                file = sharedFile
+                await file.load('serverShard')
+                await file.load('previews')
+            } catch {
+                if (alias.includes('.')) {
+                    const payload = FileShareTokenService.verify(alias)
+                    file = await FileService.getFile(payload.fileId, null)
+                    await file.load('serverShard')
+                    await file.load('previews')
+                } else {
+                    file = await FileService.resolveFileAlias(alias, userId)
+                }
+            }
 
             if (!file) {
                 return response.notFound(this.generateErrorPage('File not found'))

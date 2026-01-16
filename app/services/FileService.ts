@@ -57,8 +57,14 @@ class FileService {
     // - legacy/non-UUID ids (e.g. cuid-style) if they were ever stored as the primary id
     let file = await FileItem.findBy('id', alias)
     if (!file) {
-      const uuid = UUIDService.decode(alias)
-      file = await FileItem.findBy('id', uuid)
+      try {
+        const uuid = UUIDService.decode(alias)
+        file = await FileItem.findBy('id', uuid)
+      } catch {
+        // Not a decodable UUID alias (e.g. token-based share ids contain '.')
+        // Treat as not found so callers can try other share mechanisms.
+        file = null
+      }
     }
     if (!file) throw new NamedError('File not found', 'not-found')
 

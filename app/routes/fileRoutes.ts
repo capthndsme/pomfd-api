@@ -23,6 +23,8 @@ function fileRoutes(router: HttpRouterService) {
         router.post('/move', [FilesController, 'moveFile'])
         router.post('/share', [FilesController, 'createShare'])
         router.post('/share-file', [FilesController, 'createFileShare'])
+        router.get('/my-file-shares', [FilesController, 'listMyFileShares'])
+        router.delete('/share-file/:shareId', [FilesController, 'deleteFileShare'])
         // Dedicated viewer endpoint: returns public direct URLs or private presigned URLs (no "share" semantics)
         router.post('/view-urls', [FilesController, 'getFileViewUrls'])
         router.get('/my-shares', [FilesController, 'listMyShares'])
