@@ -17,6 +17,10 @@ export default await Env.create(new URL('../', import.meta.url), {
   APP_KEY: Env.schema.string(),
   HOST: Env.schema.string({ format: 'host' }),
   LOG_LEVEL: Env.schema.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']),
+  /**
+   * For generating absolute UI links (e.g. /s/:id share surface)
+   */
+  COORDINATOR_UI: Env.schema.string.optional(),
 
   /*
   |----------------------------------------------------------

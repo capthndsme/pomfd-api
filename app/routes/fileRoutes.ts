@@ -12,6 +12,8 @@ function fileRoutes(router: HttpRouterService) {
       // Public share access
       router.get('/share/:shareId', [FilesController, 'getShare'])
       router.post('/share/:shareId/verify', [FilesController, 'verifySharePassword'])
+      // Public file-share access (token-based share surface for private files)
+      router.get('/share-file/:shareId', [FilesController, 'getFileShare'])
 
       // Authenticated routes
       router.group(() => {
