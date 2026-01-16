@@ -156,6 +156,13 @@ class FileService {
  */
   generatePresignedUrl(file: FileItem, expiresIn: number): string {
     const expires = Date.now() + expiresIn * 1000 // expires timestamp in milliseconds
+
+    // Ensure serverShard is loaded and has the necessary data
+    if (!file.serverShard) {
+      console.warn(`Cannot generate presigned URL: serverShard not loaded for file ${file.id}`)
+      return ''
+    }
+
     if (!file.fileKey || !file.serverShard.apiKey) return ''
 
     const signature = this.#createSignature(file.fileKey, file.serverShard.apiKey, expires)

@@ -110,18 +110,26 @@ export default class AuthController {
         return response.notFound(createFailure('User not found', 'user-not-found'))
       }
 
-      const isValid = await User.accessTokens.verify(token)
+      // Verify the token by checking if it exists and is valid for this user
+      // The DbAccessTokensProvider will handle the hashing and comparison
+      try {
+        const tokenModel = await User.accessTokens.find(user, token)
 
-      if (isValid) {
-        return response.ok(createSuccess(null, 'Token is valid', 'success'))
-      } else {
+        if (tokenModel) {
+          return response.ok(createSuccess(null, 'Token is valid', 'success'))
+        } else {
+          return response.unauthorized(createFailure('Token is invalid or expired', 'token-invalid'))
+        }
+      } catch (tokenError) {
+        // Token not found or invalid
         return response.unauthorized(createFailure('Token is invalid or expired', 'token-invalid'))
       }
     } catch (error) {
+      console.error('Error verifying user token:', error)
       return response.internalServerError(createFailure('Internal server error'))
     }
   }
-  
+
   async getMyProfile({ auth, response }: HttpContext) {
     try {
       const user = auth.getUserOrFail()
@@ -130,6 +138,6 @@ export default class AuthController {
       return response.unauthorized(createFailure('Authentication required', 'unauthorized'))
     }
   }
-  
-  
+
+
 }

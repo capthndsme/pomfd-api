@@ -75,15 +75,21 @@ class ServerCommunicationService {
       .preload('previews')
       .limit(8)
 
-    try {
-      for (const file of files) {
-        FileService.generatePresignedUrl(file, 3600)
+    // Pre-sign files if they have serverShard loaded
+    const presignedFiles = files.map((file) => {
+      try {
+        // Only presign if serverShard is properly loaded
+        if (file.serverShard && file.serverShard.apiKey) {
+          return FileService.presignFile(file)
+        }
+        return file
+      } catch (e) {
+        console.warn(`presign fail for file ${file.id}:`, e)
+        return file
       }
+    })
 
-    } catch (e) {
-      console.warn(`presign fail`, e)
-    }
-    return files;
+    return presignedFiles
   }
 
   async markFile(fileId: string, status: FileItem['transcodeStatus']) {
