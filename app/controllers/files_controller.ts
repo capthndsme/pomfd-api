@@ -119,8 +119,13 @@ export default class FilesController {
       const file = await FileService.move(fileId, parentId, user.id)
       return response.ok(createSuccess(file, 'File moved successfully', 'success'))
     } catch (error) {
-      if (error instanceof NamedError && error.name === 'file-exists') {
-        return response.conflict(createFailure(error.message, 'file-exists'))
+      if (error instanceof NamedError) {
+        if (error.name === 'file-exists') {
+          return response.conflict(createFailure(error.message, 'file-exists'))
+        }
+        if (error.name === 'einval') {
+          return response.badRequest(createFailure(error.message, 'einval'))
+        }
       }
       return response.internalServerError(createFailure('Failed to move file'))
     }

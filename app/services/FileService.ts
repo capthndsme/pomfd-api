@@ -118,8 +118,31 @@ class FileService {
     }
 
     file.parentFolder = parentId
+
+    // Cycle check
+    if (await this.hasCycle(fileId, parentId)) {
+      throw new NamedError('Cannot move folder into itself or its own subfolder', 'einval')
+    }
+
     await file.save()
     return file
+  }
+
+  private async hasCycle(fileId: string, targetParentId: string): Promise<boolean> {
+    if (fileId === targetParentId) return true
+
+    let currentId: string | null = targetParentId
+    let depth = 0
+
+    while (currentId && depth < 50) {
+      if (currentId === fileId) return true
+      const ancestor: FileItem | null = await FileItem.find(currentId)
+      if (!ancestor) return false
+      currentId = ancestor.parentFolder
+      depth++
+    }
+
+    return false
   }
 
 
